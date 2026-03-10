@@ -29,10 +29,10 @@ class GHGEmissionCalculator:
     def __init__(self):
         self.TOC = 0.436
         self.TN = 0.0142
-        self.f_CH4_vermi = 0.0013
-        self.f_N2O_vermi = 0.0092
-        self.f_CH4_thermo = 0.0060
-        self.f_N2O_thermo = 0.0196
+        self.f_CH4_vermi = 0.00013
+        self.f_N2O_vermi = 0.00092
+        self.f_CH4_thermo = 0.00060
+        self.f_N2O_thermo = 0.00196
         self.COMPOSTING_DAYS = 50
         self.GWP_CH4_20 = 79.7
         self.GWP_N2O_20 = 273

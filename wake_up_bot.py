@@ -6,7 +6,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
 
-APP_URL = "https://carbonocircular.streamlit.app/"
+APP_URL = "https://carbono.streamlit.app/"
 
 options = webdriver.ChromeOptions()
 options.add_argument("--headless")

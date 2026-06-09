@@ -35,57 +35,88 @@ plt.rcParams['figure.dpi'] = 150
 plt.rcParams['font.size'] = 10
 sns.set_style("whitegrid")
 
+# =============================================================================
+# PARÂMETROS ESPECÍFICOS PARA O PROJETO EM RIBEIRÃO PRETO
+# =============================================================================
+# Aterro CGR Guatapará (destino dos RSU):
+#   - É um aterro sanitário com usina de biogás desde 2014.
+#   - Possui captura de metano para geração de energia elétrica.
+#   - Conforme a ferramenta A6.4-AMT-003 (v01.0):
+#        * MCF = 1,0 (Tabela 8 – anaerobic managed SWDS)
+#        * Fator de captura (f_y) = 0,6 (60% do metano gerado é capturado e destruído/utilizado)
+#   - Fator φ (model correction) para baseline em clima úmido: 0,85 (Tabela 5, Application B)
+CAPTURE_FRACTION_BASELINE = 0.6    # 60% de captura (realidade de Ribeirão Preto)
+MCF_BASELINE = 1.0                 # Aterro sanitário anaeróbio gerenciado
+OX_BASELINE = 0.1                  # Fator de oxidação para SWDS sem cobertura (não-LDC)
+PHI_BASELINE = 0.85                # Clima úmido (Application B)
+
+# Fatores de emissão padrão para compostagem em leiras (TOOL13, v02.0, seção 6.3)
+EF_CH4_COMPOST_DEFAULT = 0.002     # t CH4 / t resíduo úmido
+EF_N2O_COMPOST_DEFAULT = 0.0005    # t N2O / t resíduo úmido
 
 # CLASSE PARA CÁLCULO DE EMISSÕES DE GEE
 
 class GHGEmissionCalculator:
     """
     Calcula emissões de CH₄ e N₂O para:
-    - Aterro sanitário (baseline, método FOD do IPCC)
-    - Compostagem termofílica (com fatores padrão do TOOL13 – UNFCCC 2017)
-    Inclui correção φ (UNFCCC 2024) e fator de captura de metano.
+    - Aterro sanitário (baseline, método FOD do IPCC) – calibrado para Ribeirão Preto.
+    - Compostagem convencional em leiras (windrow composting) – conforme TOOL13.
+
+    Referências normativas:
+    - Baseline: A6.4-AMT-003 (v01.0) "Emissions from solid waste disposal sites"
+    - Compostagem: TOOL13 (v02.0) "Project and leakage emissions from composting"
+    - Metodologia geral: AMS-III.F (v12.0) "Avoidance of methane emissions through composting"
     """
 
     def __init__(self):
-        # Parâmetros fixos baseados na literatura (mantidos para compatibilidade com o restante do script)
-        self.TOC = 0.436                # Carbono orgânico total (não usado diretamente na compostagem com fatores padrão)
-        self.TN = 0.0142                # Nitrogênio total (não usado diretamente)
-        # Fatores de emissão padrão para compostagem termofílica (TOOL13, versão 02.0, seção 6.3)
-        # Valores em t de gás por t de resíduo úmido
-        self.EF_CH4_default = 0.002     # t CH4 / t resíduo úmido (default conservador)
-        self.EF_N2O_default = 0.0005    # t N2O / t resíduo úmido (default conservador)
-        self.COMPOSTING_DAYS = 50       # Duração do processo de compostagem (dias)
-        self.GWP_CH4_20 = 79.7          # GWP-20 para CH4 (Forster et al. 2021)
-        self.GWP_N2O_20 = 273           # GWP-20 para N2O (Forster et al. 2021)
-        self.MCF = 1.0                  # Fator de correção de metano (aterro)
-        self.F = 0.5                    # Fração de metano no biogás
-        self.OX = 0.1                   # Fator de oxidação
-        self.Ri = 0.0                   # Fração recuperada (default 0)
+        # Parâmetros do baseline (aterro) – valores fixos para Ribeirão Preto
+        self.MCF = MCF_BASELINE               # A6.4-AMT-003, Tabela 8
+        self.F = 0.5                          # A6.4-AMT-003, Tabela 3 (fração de metano no biogás)
+        self.OX = OX_BASELINE                 # A6.4-AMT-003, Tabela 6 (sem cobertura, não-LDC)
+        self.Ri = 0.0                         # Fração recuperada (default 0)
+        
+        # Fatores de emissão padrão para compostagem em leiras (TOOL13, v02.0)
+        self.EF_CH4_default = EF_CH4_COMPOST_DEFAULT
+        self.EF_N2O_default = EF_N2O_COMPOST_DEFAULT
+        
+        # Duração típica do processo de compostagem em leiras (dias)
+        self.COMPOSTING_DAYS = 50
+        
+        # Potenciais de aquecimento global (GWP-20) – Forster et al. 2021
+        self.GWP_CH4_20 = 79.7
+        self.GWP_N2O_20 = 273
+        
+        # Carrega perfis temporais de emissões (apenas para distribuição diária)
         self._load_emission_profiles()
         self._setup_pre_disposal_emissions()
 
     def _load_emission_profiles(self):
-        """Perfis temporais diários de emissões (fração por dia) – usado apenas para distribuição temporal."""
-        # Perfil para CH4 na compostagem termofílica (mesmo perfil original, apenas para distribuir as emissões totais)
-        self.profile_ch4_thermo = np.array([
+        """
+        Perfis temporais diários de emissões (fração por dia).
+        Estes perfis são baseados na literatura e usados apenas para distribuir
+        as emissões totais ao longo do tempo. Não afetam o total de emissões.
+        """
+        # Perfil de CH4 para compostagem em leiras
+        self.profile_ch4_compost = np.array([
             0.02, 0.02, 0.02, 0.03, 0.03, 0.04, 0.04, 0.05, 0.05, 0.06,
             0.07, 0.08, 0.09, 0.10, 0.09, 0.08, 0.07, 0.06, 0.05, 0.04,
             0.03, 0.02, 0.02, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01,
             0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005,
             0.002, 0.002, 0.002, 0.002, 0.002, 0.001, 0.001, 0.001, 0.001, 0.001
         ])
-        self.profile_ch4_thermo /= self.profile_ch4_thermo.sum()
+        self.profile_ch4_compost /= self.profile_ch4_compost.sum()
 
-        # Perfil para N2O na compostagem termofílica (original)
-        self.profile_n2o_thermo = np.array([
+        # Perfil de N2O para compostagem em leiras
+        self.profile_n2o_compost = np.array([
             0.10, 0.08, 0.15, 0.05, 0.03, 0.04, 0.05, 0.07, 0.10, 0.12,
             0.15, 0.18, 0.20, 0.18, 0.15, 0.12, 0.10, 0.08, 0.06, 0.05,
             0.04, 0.03, 0.02, 0.02, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01,
             0.005, 0.005, 0.005, 0.005, 0.005, 0.002, 0.002, 0.002, 0.002, 0.002,
             0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001
         ])
-        self.profile_n2o_thermo /= self.profile_n2o_thermo.sum()
+        self.profile_n2o_compost /= self.profile_n2o_compost.sum()
 
+        # Perfil de N2O para aterro (Wang et al. 2017)
         self.profile_n2o_landfill = {1: 0.10, 2: 0.30, 3: 0.40, 4: 0.15, 5: 0.05}
 
     def _setup_pre_disposal_emissions(self):
@@ -96,18 +127,23 @@ class GHGEmissionCalculator:
 
         # N₂O: emissão total nos 3 dias (20,26 mg N kg⁻¹, segundo Feng et al. 2020)
         N2O_pre_mgN_per_kg_total = 20.26
-        # Fator de emissão total de N₂O em kg N₂O por kg de resíduo (para os 3 dias)
         self.N2O_pre_kg_per_kg_total = N2O_pre_mgN_per_kg_total * (44/28) / 1_000_000
-
         self.profile_n2o_pre = {1: 0.8623, 2: 0.10, 3: 0.0377}
 
     def calculate_landfill_emissions(self, waste_kg_day, k_year, temperature_C,
                                      doc_fraction, moisture_fraction, years=20,
-                                     phi=1.0, capture_fraction=0.0):
+                                     phi=PHI_BASELINE, capture_fraction=CAPTURE_FRACTION_BASELINE):
         """
         Emissões do aterro sanitário (método FOD do IPCC).
+        Conforme a ferramenta A6.4-AMT-003 (v01.0) "Emissions from solid waste disposal sites".
+        - Equação (1) ou (2) para o modelo FOD.
+        - Parâmetros: MCF, F, OX, phi, k, DOC_f seguem as tabelas da ferramenta.
+        - Fator phi = 0,85 para baseline em Application B (clima úmido) – Tabela 5.
+        - Fator OX = 0,1 para SWDS sem cobertura em não-LDCs – Tabela 6.
+        - capture_fraction = 0,6 representa a fração de metano capturada e destruída/utilizada no aterro CGR Guatapará.
         """
         days = years * 365
+        # Fração DOC que realmente se decompõe (IPCC)
         docf = 0.0147 * temperature_C + 0.28
         ch4_potential_per_kg = (doc_fraction * docf * self.MCF * self.F * (16/12) *
                                 (1 - self.Ri) * (1 - self.OX))
@@ -139,7 +175,7 @@ class GHGEmissionCalculator:
         return ch4_emissions + ch4_pre, n2o_emissions + n2o_pre
 
     def _calculate_pre_disposal(self, waste_kg_day, days):
-        """Emissões diárias durante o pré-descarte."""
+        """Emissões diárias durante o pré-descarte (antes do tratamento)."""
         ch4_emissions = np.full(days, waste_kg_day * self.CH4_pre_kg_per_kg_day)
         n2o_emissions = np.zeros(days)
         for entry_day in range(days):
@@ -149,63 +185,62 @@ class GHGEmissionCalculator:
                     n2o_emissions[emission_day] += (waste_kg_day * self.N2O_pre_kg_per_kg_total * fraction)
         return ch4_emissions, n2o_emissions
 
-    def calculate_thermophilic_emissions(self, waste_kg_day, moisture_fraction, years=20):
+    def calculate_composting_emissions(self, waste_kg_day, moisture_fraction, years=20):
         """
-        Emissões da compostagem termofílica usando fatores padrão do TOOL13.
-        As emissões totais de CH4 e N2O são calculadas como:
-            emissão_total (t) = quantidade_resíduo (t) * EF_default (t gás/t resíduo)
-        E então distribuídas ao longo do tempo de acordo com os perfis diários.
+        Emissões da compostagem convencional em leiras (windrow).
+        Cálculo baseado no TOOL13, versão 02.0 (UNFCCC, 2017):
+        - Seção 6.1.4: PE_CH4,y = Q_y × EF_CH4,y × GWP_CH4
+        - Seção 6.1.5: PE_N2O,y = Q_y × EF_N2O,y × GWP_N2O
+        - Valores padrão (default) fornecidos na seção 6.3:
+            EF_CH4_default = 0,002 t CH4/t resíduo úmido
+            EF_N2O_default = 0,0005 t N2O/t resíduo úmido
+        A distribuição temporal diária utiliza perfis típicos da literatura,
+        mas não altera o total de emissões.
         """
         days = years * 365
-        # Quantidade total de resíduo processada em kg (úmido)
         total_waste_kg = waste_kg_day * days
         total_waste_t = total_waste_kg / 1000.0
 
-        # Emissões totais de CH4 e N2O (toneladas) com os fatores padrão
+        # Emissões totais (toneladas) conforme TOOL13
         total_ch4_t = total_waste_t * self.EF_CH4_default
         total_n2o_t = total_waste_t * self.EF_N2O_default
 
-        # Emissões diárias (kg/dia) distribuídas pelos perfis temporais
-        ch4_emissions = np.zeros(days)
-        n2o_emissions = np.zeros(days)
-
-        # Distribuição: cada dia de entrada contribui com uma fração do total
-        # Como o processo é contínuo, convolvemos o fluxo diário de resíduo com o perfil normalizado
-        # fluxo diário de resíduo é constante = waste_kg_day
-        # Para simplificar, assumimos que as emissões totais são uniformemente distribuídas ao longo do tempo,
-        # respeitando o perfil de emissões por ciclo. O método original fazia um loop por dia de entrada.
-        # Vamos manter a mesma lógica de convolução usada para a vermicompostagem, mas com os totais corrigidos.
-
-        # Emissões por batch (por kg de resíduo) em kg
-        ch4_per_kg = (self.EF_CH4_default / 1000.0)  # kg CH4 / kg resíduo
-        n2o_per_kg = (self.EF_N2O_default / 1000.0)  # kg N2O / kg resíduo
+        # Emissões por kg de resíduo (kg gás / kg resíduo)
+        ch4_per_kg = self.EF_CH4_default / 1000.0   # kg CH4 / kg resíduo
+        n2o_per_kg = self.EF_N2O_default / 1000.0   # kg N2O / kg resíduo
 
         ch4_per_batch_kg = waste_kg_day * ch4_per_kg
         n2o_per_batch_kg = waste_kg_day * n2o_per_kg
 
+        ch4_emissions = np.zeros(days)
+        n2o_emissions = np.zeros(days)
+
+        # Distribuição diária usando perfis normalizados
         for entry_day in range(days):
             for compost_day in range(self.COMPOSTING_DAYS):
                 emission_day = entry_day + compost_day
                 if emission_day < days:
-                    ch4_emissions[emission_day] += ch4_per_batch_kg * self.profile_ch4_thermo[compost_day]
-                    n2o_emissions[emission_day] += n2o_per_batch_kg * self.profile_n2o_thermo[compost_day]
+                    ch4_emissions[emission_day] += ch4_per_batch_kg * self.profile_ch4_compost[compost_day]
+                    n2o_emissions[emission_day] += n2o_per_batch_kg * self.profile_n2o_compost[compost_day]
 
         return ch4_emissions, n2o_emissions
 
     def calculate_avoided_emissions(self, waste_kg_day, k_year, temperature_C,
                                     doc_fraction, moisture_fraction, years=20,
-                                    phi_baseline=0.85, capture_fraction=0.0):
-        """Calcula emissões evitadas (tCO₂eq) pela compostagem termofílica em relação ao aterro."""
+                                    phi_baseline=PHI_BASELINE, capture_fraction=CAPTURE_FRACTION_BASELINE):
+        """
+        Calcula emissões evitadas (tCO₂eq) pela compostagem em leiras em relação ao aterro.
+        """
         ch4_landfill, n2o_landfill = self.calculate_landfill_emissions(
             waste_kg_day, k_year, temperature_C, doc_fraction, moisture_fraction, years,
             phi=phi_baseline, capture_fraction=capture_fraction
         )
-        ch4_thermo, n2o_thermo = self.calculate_thermophilic_emissions(waste_kg_day, moisture_fraction, years)
+        ch4_compost, n2o_compost = self.calculate_composting_emissions(waste_kg_day, moisture_fraction, years)
 
         baseline_co2eq = (ch4_landfill * self.GWP_CH4_20 + n2o_landfill * self.GWP_N2O_20) / 1000
-        thermo_co2eq = (ch4_thermo * self.GWP_CH4_20 + n2o_thermo * self.GWP_N2O_20) / 1000
+        compost_co2eq = (ch4_compost * self.GWP_CH4_20 + n2o_compost * self.GWP_N2O_20) / 1000
 
-        avoided_thermo = baseline_co2eq.sum() - thermo_co2eq.sum()
+        avoided_compost = baseline_co2eq.sum() - compost_co2eq.sum()
 
         results = {
             'baseline': {
@@ -214,14 +249,14 @@ class GHGEmissionCalculator:
                 'co2eq_t': baseline_co2eq.sum()
             },
             'composting': {
-                'ch4_kg': ch4_thermo.sum(),
-                'n2o_kg': n2o_thermo.sum(),
-                'co2eq_t': thermo_co2eq.sum(),
-                'avoided_co2eq_t': avoided_thermo
+                'ch4_kg': ch4_compost.sum(),
+                'n2o_kg': n2o_compost.sum(),
+                'co2eq_t': compost_co2eq.sum(),
+                'avoided_co2eq_t': avoided_compost
             },
             'annual_averages': {
                 'baseline_tco2eq_year': baseline_co2eq.sum() / years,
-                'thermo_avoided_year': avoided_thermo / years
+                'compost_avoided_year': avoided_compost / years
             }
         }
         return results
@@ -384,7 +419,7 @@ inicializar_session_state()
 # INTERFACE PRINCIPAL E PARÂMETROS DE ENTRADA
 
 st.title("Simulador de Emissões de tCO₂eq e Cálculo de Créditos de Carbono com Análise de Sensibilidade Global")
-st.markdown("Esta ferramenta projeta os Créditos de Carbono ao calcular as emissões de gases de efeito estufa para o contexto de gestão de resíduos: **compostagem termofílica** em comparação com aterro sanitário.")
+st.markdown("Esta ferramenta projeta os Créditos de Carbono ao calcular as emissões de gases de efeito estufa para o contexto de gestão de resíduos: **compostagem convencional em leiras** (windrow) em comparação com aterro sanitário (calibrado para a realidade de Ribeirão Preto – aterro CGR Guatapará com captura de biogás).")
 
 exibir_cotacao_carbono()
 
@@ -445,18 +480,19 @@ with st.sidebar:
 # FUNÇÕES AUXILIARES PARA SIMULAÇÃO (GWP, SOBOL, MONTE CARLO)
 
 def compute_results_for_gwp(gwp_ch4, gwp_n2o, waste_kg_day, k_year, temperature_C,
-                            doc_fraction, moisture_fraction, years, phi_baseline=0.85):
+                            doc_fraction, moisture_fraction, years, 
+                            phi_baseline=PHI_BASELINE, capture_fraction=CAPTURE_FRACTION_BASELINE):
     """Executa cálculo de emissões evitadas com valores específicos de GWP."""
     calc = GHGEmissionCalculator()
     calc.GWP_CH4_20 = gwp_ch4
     calc.GWP_N2O_20 = gwp_n2o
     return calc.calculate_avoided_emissions(
         waste_kg_day, k_year, temperature_C, doc_fraction, moisture_fraction, years,
-        phi_baseline=phi_baseline
+        phi_baseline=phi_baseline, capture_fraction=capture_fraction
     )
 
 def executar_simulacao_compostagem_sobol(params_sobol, gwp_ch4, gwp_n2o):
-    """Função auxiliar para paralelização da análise Sobol – compostagem termofílica."""
+    """Função auxiliar para paralelização da análise Sobol – compostagem em leiras."""
     k_ano_sobol, T_sobol, DOC_sobol = params_sobol
     np.random.seed(50)
     calc = GHGEmissionCalculator()
@@ -469,7 +505,8 @@ def executar_simulacao_compostagem_sobol(params_sobol, gwp_ch4, gwp_n2o):
         doc_fraction=DOC_sobol,
         moisture_fraction=umidade,
         years=anos_simulacao,
-        phi_baseline=0.85
+        phi_baseline=PHI_BASELINE,
+        capture_fraction=CAPTURE_FRACTION_BASELINE
     )
     return res['composting']['avoided_co2eq_t']
 
@@ -511,9 +548,9 @@ if st.session_state.get('run_simulation', False):
         calc_g20.GWP_CH4_20, calc_g20.GWP_N2O_20 = gwps["Otimista (GWP-20)"]
         ch4_aterro_dia, n2o_aterro_dia = calc_g20.calculate_landfill_emissions(
             residuos_kg_dia, k_ano, T, DOC, umidade, anos_simulacao,
-            phi=0.85, capture_fraction=0.0
+            phi=PHI_BASELINE, capture_fraction=CAPTURE_FRACTION_BASELINE
         )
-        ch4_compost_dia, n2o_compost_dia = calc_g20.calculate_thermophilic_emissions(
+        ch4_compost_dia, n2o_compost_dia = calc_g20.calculate_composting_emissions(
             residuos_kg_dia, umidade, anos_simulacao
         )
 
@@ -551,15 +588,19 @@ if st.session_state.get('run_simulation', False):
         # --- EXIBIÇÃO DE RESULTADOS ---
         st.header("📈 Resultados da Simulação")
         st.info(f"""
-        **Parâmetros utilizados na simulação:**
+        **Parâmetros utilizados na simulação (calibrados para Ribeirão Preto):**
         - Taxa de decaimento (k): {formatar_br(k_ano)} ano⁻¹
         - Temperatura (T): {formatar_br(T)} °C
         - DOC: {formatar_br(DOC)}
         - Umidade: {formatar_br(umidade_valor)}%
         - Resíduos/dia: {formatar_br(residuos_kg_dia)} kg
         - Total de resíduos: {formatar_br(residuos_kg_dia * 365 * anos_simulacao / 1000)} toneladas
-        - Fator φ (baseline): 0,85 (UNFCCC 2024 - clima úmido)
-        - Fatores de emissão da compostagem: CH₄ = 0,002 t CH₄/t resíduo úmido; N₂O = 0,0005 t N₂O/t resíduo úmido (TOOL13, versão 02.0)
+        - **Aterro de Ribeirão Preto (CGR Guatapará):**
+            - MCF = 1,0 (aterro sanitário anaeróbio)
+            - Captura de metano = {CAPTURE_FRACTION_BASELINE*100:.0f}% (usina de biogás)
+            - Fator φ (baseline) = {PHI_BASELINE} (clima úmido, UNFCCC 2024)
+        - **Compostagem em leiras (TOOL13, v02.0):**
+            - Fatores de emissão padrão: CH₄ = {EF_CH4_COMPOST_DEFAULT} t CH₄/t resíduo úmido; N₂O = {EF_N2O_COMPOST_DEFAULT} t N₂O/t resíduo úmido
         """)
 
         # Tabela comparativa de GWP
@@ -617,7 +658,7 @@ if st.session_state.get('run_simulation', False):
         # Resumo emissões evitadas
         st.subheader("📊 Resumo das Emissões Evitadas (Cenário Otimista)")
         media_anual_compost = total_evitado_compost / anos_simulacao
-        st.markdown("#### 📋 Compostagem Termofílica")
+        st.markdown("#### 📋 Compostagem Convencional em Leiras")
         col1, col2 = st.columns(2)
         with col1:
             st.metric("Total de emissões evitadas", f"{formatar_br(total_evitado_compost)} tCO₂eq",
@@ -637,7 +678,7 @@ if st.session_state.get('run_simulation', False):
                     ha='center', fontsize=9, fontweight='bold')
         ax.set_xlabel('Ano')
         ax.set_ylabel('Emissões Evitadas (t CO₂eq)')
-        ax.set_title('Emissões Evitadas Anuais pela Compostagem Termofílica')
+        ax.set_title('Emissões Evitadas Anuais pela Compostagem em Leiras')
         ax.yaxis.set_major_formatter(br_formatter)
         ax.grid(axis='y', linestyle='--', alpha=0.7)
         st.pyplot(fig)
@@ -649,7 +690,7 @@ if st.session_state.get('run_simulation', False):
         ax.plot(df['Data'], df['Total_Aterro_tCO2eq_acum'], 'r-',
                 label='Cenário Base (Aterro Sanitário)', linewidth=2)
         ax.plot(df['Data'], df['Total_Compost_tCO2eq_acum'], 'g-',
-                label='Compostagem Termofílica', linewidth=2)
+                label='Compostagem em Leiras', linewidth=2)
         ax.fill_between(df['Data'], df['Total_Compost_tCO2eq_acum'],
                         df['Total_Aterro_tCO2eq_acum'], color='skyblue',
                         alpha=0.5, label='Emissões Evitadas')
@@ -663,7 +704,7 @@ if st.session_state.get('run_simulation', False):
         plt.close(fig)
 
         # --- ANÁLISE DE SENSIBILIDADE SOBOL (GWP-20) ---
-        st.subheader("🎯 Análise de Sensibilidade Global (Sobol) - Compostagem Termofílica (GWP-20)")
+        st.subheader("🎯 Análise de Sensibilidade Global (Sobol) - Compostagem em Leiras (GWP-20)")
         st.info("**Parâmetros variados:** Taxa de Decaimento (k), Temperatura (T), DOC")
         br_formatter_sobol = FuncFormatter(br_format)
 
@@ -696,7 +737,7 @@ if st.session_state.get('run_simulation', False):
 
         fig, ax = plt.subplots(figsize=(10, 6))
         sns.barplot(x='ST', y='Parâmetro', data=sensibilidade_df_compost, palette='viridis', ax=ax)
-        ax.set_title('Sensibilidade Global - Compostagem Termofílica (GWP-20)')
+        ax.set_title('Sensibilidade Global - Compostagem em Leiras (GWP-20)')
         ax.set_xlabel('Índice ST (Sobol Total)')
         ax.set_ylabel('Parâmetro')
         ax.grid(axis='x', linestyle='--', alpha=0.7)
@@ -724,7 +765,8 @@ if st.session_state.get('run_simulation', False):
                     doc_fraction=doc_vals[i],
                     moisture_fraction=umidade_vals[i],
                     years=anos_simulacao,
-                    phi_baseline=0.85
+                    phi_baseline=PHI_BASELINE,
+                    capture_fraction=CAPTURE_FRACTION_BASELINE
                 )
                 thermo_arr.append(res['composting']['avoided_co2eq_t'])
             mc_results[nome] = {
@@ -735,7 +777,7 @@ if st.session_state.get('run_simulation', False):
         fig, ax = plt.subplots(figsize=(12, 6))
         for nome, arr_dict in mc_results.items():
             sns.kdeplot(arr_dict['composting'], label=nome, ax=ax, linewidth=2)
-        ax.set_title('Distribuição das Emissões Evitadas (Compostagem Termofílica)')
+        ax.set_title('Distribuição das Emissões Evitadas (Compostagem em Leiras)')
         ax.set_xlabel('Emissões Evitadas (tCO₂eq)')
         ax.set_ylabel('Densidade')
         ax.legend()
@@ -757,7 +799,7 @@ if st.session_state.get('run_simulation', False):
                 "IC 95% Superior": np.percentile(arr, 97.5)
             })
         df_mc_stats = pd.DataFrame(stats_list)
-        st.subheader("📊 Estatísticas do Monte Carlo - Compostagem Termofílica")
+        st.subheader("📊 Estatísticas do Monte Carlo - Compostagem em Leiras")
         st.dataframe(df_mc_stats.style.format({
             "Média (tCO₂eq)": lambda x: formatar_br(x),
             "Mediana (tCO₂eq)": lambda x: formatar_br(x),
@@ -767,7 +809,7 @@ if st.session_state.get('run_simulation', False):
         }))
 
         # Tabelas anuais formatadas
-        st.subheader("📋 Resultados Anuais - Compostagem Termofílica (Cenário Otimista)")
+        st.subheader("📋 Resultados Anuais - Compostagem em Leiras (Cenário Otimista)")
         df_anual_formatado = df_anual_revisado.copy()
         for col in df_anual_formatado.columns:
             if col != 'Year':
@@ -784,15 +826,18 @@ st.markdown("---")
 st.markdown("""
 **📚 Referências por Cenário:**
 
-**Cenário de Baseline (Aterro Sanitário):**
-- Metano: IPCC (2006), UNFCCC (2016) e Wang et al. (2023)
-- Óxido Nitroso: Wang et al. (2017)
-- Metano e Óxido Nitroso no pré-descarte: Feng et al. (2020)
-- **Fator φ = 0,85 (UNFCCC, 2024) aplicado ao baseline para clima úmido**
+**Cenário de Baseline (Aterro Sanitário – calibrado para Ribeirão Preto):**
+- Metano: IPCC (2006), ferramenta A6.4-AMT-003 (v01.0) – "Emissions from solid waste disposal sites".
+- Óxido Nitroso: Wang et al. (2017).
+- Metano e Óxido Nitroso no pré-descarte: Feng et al. (2020).
+- **Aterro CGR Guatapará:** MCF = 1,0 (sanitário anaeróbio), captura de metano = 60% (usina de biogás em operação), fator φ = 0,85 (clima úmido, Application B).
 
-**Compostagem termofílica (tecnologia proposta):**
-- Protocolo AMS-III.F: UNFCCC (2016)
-- Fatores de emissão padrão: TOOL13, versão 02.0 (UNFCCC, 2017) – CH₄ = 0,002 t CH₄/t resíduo úmido; N₂O = 0,0005 t N₂O/t resíduo úmido
+**Compostagem convencional em leiras (windrow):**
+- Protocolo AMS-III.F: UNFCCC (2016) – "Avoidance of methane emissions through composting".
+- Ferramenta TOOL13, versão 02.0 (UNFCCC, 2017) – "Project and leakage emissions from composting".
+- Fatores de emissão padrão (seção 6.3 do TOOL13):
+    - CH₄ = 0,002 t CH₄ / t resíduo úmido
+    - N₂O = 0,0005 t N₂O / t resíduo úmido
 
 **Cenários de Potencial de Aquecimento Global (GWP):**
 - **Otimista (GWP-20):** CH₄ = 79,7; N₂O = 273 (Forster et al., 2021)
@@ -801,5 +846,5 @@ st.markdown("""
 
 **⚠️ Nota de Reprodutibilidade:**
 - Todas as análises usam seed fixo (50) para garantir resultados reprodutíveis.
-- Métodos de cálculo idênticos aos utilizados na validação original (com exceção da remoção da vermicompostagem e correção dos fatores de emissão da compostagem conforme TOOL13).
+- Métodos de cálculo idênticos aos utilizados na validação original, com a compostagem ajustada aos valores padrão da UNFCCC e o baseline calibrado para a realidade operacional do aterro de Ribeirão Preto.
 """)

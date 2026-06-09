@@ -1,5 +1,4 @@
-# IMPORTAÇÕES E CONFIGURAÇÕES INICIAIS
-
+# IMPORTAÇÕES E CONFIGURAÇÕES INICIAIS (mesmo do script anterior)
 import requests
 import streamlit as st
 import numpy as np
@@ -15,42 +14,35 @@ from SALib.sample.sobol import sample
 from SALib.analyze.sobol import analyze
 import yfinance as yf
 
-# Semente fixa para reprodutibilidade
+# Semente fixa e configurações da página
 np.random.seed(50)
-
 st.set_page_config(
     page_title="Comparação de Tecnologias de Compostagem para Créditos de Carbono",
     layout="wide"
 )
-
 warnings.filterwarnings("ignore", category=FutureWarning)
 pd.set_option('display.max_columns', None)
-pd.set_option('display.width', None)
-np.seterr(divide='ignore', invalid='ignore')
-
 plt.rcParams['figure.dpi'] = 150
 plt.rcParams['font.size'] = 10
 sns.set_style("whitegrid")
 
 # =============================================================================
-# PARÂMETROS ESPECÍFICOS PARA O PROJETO EM RIBEIRÃO PRETO
+# PARÂMETROS (mesmos do script anterior)
 # =============================================================================
-CAPTURE_FRACTION_BASELINE = 0.6   # 60% captura no aterro CGR Guatapará
+CAPTURE_FRACTION_BASELINE = 0.6
 MCF_BASELINE = 1.0
 OX_BASELINE = 0.1
 PHI_BASELINE = 0.85
 
-# Termofílica (Yang et al. 2017)
 TOC = 0.436
 TN = 0.0142
 F_CH4_THERMO = 0.0060
 F_N2O_THERMO = 0.0196
 
-# Leiras (TOOL13)
 EF_CH4_WINDROW = 0.002
 EF_N2O_WINDROW = 0.0005
 
-# CLASSE DE CÁLCULO (igual à última versão funcional)
+# Classe GHGEmissionCalculator (exatamente igual à última versão funcional)
 class GHGEmissionCalculator:
     def __init__(self):
         self.MCF = MCF_BASELINE
@@ -104,14 +96,12 @@ class GHGEmissionCalculator:
         kernel = np.exp(-k*(t-1)/365.0) - np.exp(-k*t/365.0)
         ch4 = np.convolve(np.ones(days), kernel, mode='full')[:days] * ch4_pot_kg
         ch4 = ch4 * phi * (1 - capt)
-
         opening_factor = min(1.0, (100/w_kg_day)*(8/24))
         E_avg = opening_factor*1.91 + (1-opening_factor)*2.15
         moisture_factor = (1-umid)/(1-0.55)
         daily_n2o_kg = (E_avg * moisture_factor * (44/28) / 1_000_000) * w_kg_day
         kernel_n2o = np.array([self.profile_n2o_landfill.get(d,0) for d in range(1,6)])
         n2o = np.convolve(np.full(days, daily_n2o_kg), kernel_n2o, mode='full')[:days]
-
         ch4_pre, n2o_pre = self._pre_disposal(w_kg_day, days)
         return ch4 + ch4_pre, n2o + n2o_pre
 
@@ -163,18 +153,20 @@ class GHGEmissionCalculator:
         ch4_l, n2o_l = self.calculate_landfill_emissions(w_kg_day, k, temp, doc, umid, years)
         ch4_t, n2o_t = self.calculate_thermophilic_emissions(w_kg_day, umid, years)
         ch4_w, n2o_w = self.calculate_windrow_emissions(w_kg_day, umid, years)
-
         base = (ch4_l*self.GWP_CH4_20 + n2o_l*self.GWP_N2O_20)/1000
         thermo = (ch4_t*self.GWP_CH4_20 + n2o_t*self.GWP_N2O_20)/1000
         wind = (ch4_w*self.GWP_CH4_20 + n2o_w*self.GWP_N2O_20)/1000
         return {
             'baseline': base.sum(),
             'thermo_avoided': base.sum() - thermo.sum(),
-            'wind_avoided': base.sum() - wind.sum()
+            'wind_avoided': base.sum() - wind.sum(),
+            'base_series': base, 'thermo_series': thermo, 'wind_series': wind
         }
 
 
+# =============================================================================
 # FUNÇÕES DE COTAÇÃO, FORMATAÇÃO E INTERFACE (mantidas iguais)
+# =============================================================================
 def obter_cotacao_carbono():
     try:
         ticker = yf.Ticker("CO2.L")
@@ -214,12 +206,6 @@ def formatar_br(numero):
         return "N/A"
     numero = round(numero, 2)
     return f"{numero:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-
-def formatar_br_dec(numero, decimais=2):
-    if pd.isna(numero):
-        return "N/A"
-    numero = round(numero, decimais)
-    return f"{numero:,.{decimais}f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 def br_format(x, pos):
     if x == 0:
@@ -271,14 +257,6 @@ def exibir_cotacao_carbono():
         value=f"R$ {formatar_br(preco_carbono_reais)}",
         help="Preço do carbono convertido para Reais Brasileiros"
     )
-    with st.sidebar.expander("ℹ️ Informações do Mercado de Carbono"):
-        st.markdown(f"""
-        **📊 Cotações Atuais:**
-        - **Fonte do Carbono:** {st.session_state.fonte_cotacao}
-        - **Preço Atual:** {st.session_state.moeda_carbono} {formatar_br(st.session_state.preco_carbono)}/tCO₂eq
-        - **Câmbio EUR/BRL:** 1 Euro = R$ {formatar_br(st.session_state.taxa_cambio)}
-        - **Carbono em Reais:** R$ {formatar_br(preco_carbono_reais)}/tCO₂eq
-        """)
 
 def inicializar_session_state():
     if 'preco_carbono' not in st.session_state:
@@ -309,7 +287,7 @@ inicializar_session_state()
 st.title("Comparação de Tecnologias de Compostagem para Créditos de Carbono")
 st.markdown("""
 Esta ferramenta compara **duas tecnologias de compostagem** (termofílica e em leiras) com o **cenário baseline (aterro sanitário)** calibrado para Ribeirão Preto (aterro CGR Guatapará com captura de biogás).  
-**Estatísticas de diferença significativa** entre as emissões evitadas pelas duas tecnologias são calculadas via Monte Carlo.
+**Estatísticas de diferença significativa** entre as emissões evitadas são calculadas via Monte Carlo.
 
 **Metodologias:**  
 - **Baseline:** A6.4‑AMT‑003 (MCF=1,0; captura=60%; φ=0,85)  
@@ -335,7 +313,9 @@ with st.sidebar:
     if st.button("🚀 Executar Simulação", type="primary"):
         st.session_state.run_simulation = True
 
-# FUNÇÕES AUXILIARES SOBOL / MC
+# =============================================================================
+# FUNÇÕES PARA SOBOL E MONTE CARLO (serão chamadas após os resultados rápidos)
+# =============================================================================
 def sobol_thermo(params, gwp_ch4, gwp_n2o):
     k, temp, doc = params
     np.random.seed(50)
@@ -361,145 +341,140 @@ def gerar_parametros_mc(n):
     d = np.random.triangular(0.12, 0.15, 0.18, n)
     return u, t, d
 
-# EXECUÇÃO
+
+# =============================================================================
+# EXECUÇÃO PRINCIPAL (com ordem de exibição progressiva)
+# =============================================================================
 if st.session_state.get('run_simulation', False):
-    with st.spinner("Simulando..."):
-        gwps = {
-            "Otimista (GWP-20)": (79.7, 273),
-            "Realista (GWP-100)": (27.0, 273),
-            "Pessimista (GWP-500)": (7.2, 130)
-        }
 
-        # Determínistico para cada GWP
-        results_all = {}
-        for nome, (gwp_ch4, gwp_n2o) in gwps.items():
-            calc_temp = GHGEmissionCalculator()
-            calc_temp.GWP_CH4_20 = gwp_ch4
-            calc_temp.GWP_N2O_20 = gwp_n2o
-            r = calc_temp.calculate_avoided_emissions(residuos_kg_dia, k_ano, T, DOC, umidade, anos_simulacao)
-            results_all[nome] = r
-
-        res_otimista = results_all["Otimista (GWP-20)"]
-        evitado_thermo = res_otimista['thermo_avoided']
-        evitado_windrow = res_otimista['wind_avoided']
-
-        st.header("📈 Resultados da Simulação (GWP-20)")
-        st.info(f"""
-        **Parâmetros calibrados para Ribeirão Preto:**  
-        - k = {formatar_br(k_ano)} ano⁻¹, T = {formatar_br(T)} °C, DOC = {formatar_br(DOC)}, Umidade = {formatar_br(umidade_valor)}%  
-        - Resíduos totais: {formatar_br(residuos_kg_dia * 365 * anos_simulacao / 1000)} t  
-        - **Aterro:** MCF = 1,0; captura = 60%; φ = 0,85  
-        - **Termofílica:** Yang et al. (2017)  
-        - **Leiras:** TOOL13 (0,002 t CH₄/t; 0,0005 t N₂O/t)
-        """)
-
-        st.subheader("📊 Emissões Evitadas (tCO₂eq) – Comparação entre Cenários GWP")
-        df_gwp = pd.DataFrame([{
-            "Cenário": nome,
-            "Termofílica": r['thermo_avoided'],
-            "Leiras (TOOL13)": r['wind_avoided']
-        } for nome, r in results_all.items()])
-        st.dataframe(df_gwp.style.format({c: lambda x: formatar_br(x) for c in df_gwp.columns if c != "Cenário"}))
-
-        st.subheader("💰 Valor Financeiro (Cenário Otimista)")
-        preco = st.session_state.preco_carbono
-        moeda = st.session_state.moeda_carbono
-        cambio = st.session_state.taxa_cambio
-        col1, col2 = st.columns(2)
-        with col1:
-            st.metric("Termofílica - Evitado", f"{formatar_br(evitado_thermo)} tCO₂eq")
-            st.metric("Valor (Euro)", f"{moeda} {formatar_br(evitado_thermo * preco)}")
-            st.metric("Valor (R$)", f"R$ {formatar_br(evitado_thermo * preco * cambio)}")
-        with col2:
-            st.metric("Leiras - Evitado", f"{formatar_br(evitado_windrow)} tCO₂eq")
-            st.metric("Valor (Euro)", f"{moeda} {formatar_br(evitado_windrow * preco)}")
-            st.metric("Valor (R$)", f"R$ {formatar_br(evitado_windrow * preco * cambio)}")
-
-        # GRÁFICO DE BARRAS ANUAL – EMISSÕES EVITADAS (igual ao original)
-        st.subheader("📊 Comparação Anual das Emissões Evitadas (Cenário Otimista)")
-        # Gerar séries diárias para obter totais anuais
+    # -------------------- 1. RESULTADOS DETERMINÍSTICOS (rápidos) --------------------
+    with st.spinner("Calculando resultados determinísticos..."):
         calc = GHGEmissionCalculator()
-        calc.GWP_CH4_20, calc.GWP_N2O_20 = gwps["Otimista (GWP-20)"]
-        ch4_l, n2o_l = calc.calculate_landfill_emissions(residuos_kg_dia, k_ano, T, DOC, umidade, anos_simulacao)
-        ch4_t, n2o_t = calc.calculate_thermophilic_emissions(residuos_kg_dia, umidade, anos_simulacao)
-        ch4_w, n2o_w = calc.calculate_windrow_emissions(residuos_kg_dia, umidade, anos_simulacao)
-        base_co2 = (ch4_l*calc.GWP_CH4_20 + n2o_l*calc.GWP_N2O_20)/1000
-        thermo_co2 = (ch4_t*calc.GWP_CH4_20 + n2o_t*calc.GWP_N2O_20)/1000
-        wind_co2 = (ch4_w*calc.GWP_CH4_20 + n2o_w*calc.GWP_N2O_20)/1000
-        df_dia = pd.DataFrame({
-            'Data': pd.date_range(start=datetime.now(), periods=len(base_co2), freq='D'),
-            'base': base_co2,
-            'thermo': thermo_co2,
-            'wind': wind_co2
-        })
+        # Usar GWP-20 para os gráficos principais
+        calc.GWP_CH4_20, calc.GWP_N2O_20 = (79.7, 273)
+        res_det = calc.calculate_avoided_emissions(residuos_kg_dia, k_ano, T, DOC, umidade, anos_simulacao)
+        evitado_thermo = res_det['thermo_avoided']
+        evitado_windrow = res_det['wind_avoided']
+
+        # Séries diárias para gráficos
+        base_series = res_det['base_series']
+        thermo_series = res_det['thermo_series']
+        wind_series = res_det['wind_series']
+
+        # Cálculo anual para gráfico de barras
+        dias_total = len(base_series)
+        datas = pd.date_range(start=datetime.now(), periods=dias_total, freq='D')
+        df_dia = pd.DataFrame({'Data': datas, 'base': base_series, 'thermo': thermo_series, 'wind': wind_series})
         df_dia['Year'] = df_dia['Data'].dt.year
-        df_anual = df_dia.groupby('Year').agg({
-            'base': 'sum',
-            'thermo': 'sum',
-            'wind': 'sum'
-        }).reset_index()
+        df_anual = df_dia.groupby('Year').agg({'base':'sum','thermo':'sum','wind':'sum'}).reset_index()
         df_anual['Evitado_Thermo'] = df_anual['base'] - df_anual['thermo']
         df_anual['Evitado_Wind'] = df_anual['base'] - df_anual['wind']
 
-        fig, ax = plt.subplots(figsize=(10, 6))
-        x = np.arange(len(df_anual['Year']))
-        width = 0.35
-        ax.bar(x - width/2, df_anual['Evitado_Thermo'], width, label='Termofílica', edgecolor='black', color='orange')
-        ax.bar(x + width/2, df_anual['Evitado_Wind'], width, label='Leiras (TOOL13)', edgecolor='black', color='green', hatch='//')
-        for i, (v1, v2) in enumerate(zip(df_anual['Evitado_Thermo'], df_anual['Evitado_Wind'])):
-            ax.text(i - width/2, v1 + max(v1,v2)*0.01, formatar_br(v1), ha='center', fontsize=9, fontweight='bold')
-            ax.text(i + width/2, v2 + max(v1,v2)*0.01, formatar_br(v2), ha='center', fontsize=9, fontweight='bold')
-        ax.set_xlabel('Ano')
-        ax.set_ylabel('Emissões Evitadas (t CO₂eq)')
-        ax.set_title('Comparação Anual: Termofílica vs Leiras')
-        ax.set_xticks(x)
-        ax.set_xticklabels(df_anual['Year'], fontsize=8)
-        ax.legend()
-        ax.yaxis.set_major_formatter(FuncFormatter(br_format))
-        ax.grid(axis='y', linestyle='--', alpha=0.7)
-        st.pyplot(fig)
-        plt.close(fig)
+    # Exibição imediata dos resultados rápidos
+    st.header("📈 Resultados da Simulação (GWP-20)")
+    st.info(f"""
+    **Parâmetros calibrados para Ribeirão Preto:**  
+    - k = {formatar_br(k_ano)} ano⁻¹, T = {formatar_br(T)} °C, DOC = {formatar_br(DOC)}, Umidade = {formatar_br(umidade_valor)}%  
+    - Resíduos totais: {formatar_br(residuos_kg_dia * 365 * anos_simulacao / 1000)} t  
+    - **Aterro:** MCF = 1,0; captura = 60%; φ = 0,85  
+    - **Termofílica:** Yang et al. (2017)  
+    - **Leiras:** TOOL13 (0,002 t CH₄/t; 0,0005 t N₂O/t)
+    """)
 
-        # GRÁFICO DE REDUÇÃO ACUMULADA (curvas + diferença)
-        st.subheader("📉 Redução de Emissões Acumulada (Cenário Otimista)")
-        base_acum = np.cumsum(base_co2)
-        thermo_acum = np.cumsum(thermo_co2)
-        wind_acum = np.cumsum(wind_co2)
-        datas = df_dia['Data']
-        fig2, ax2 = plt.subplots(figsize=(10,6))
-        ax2.plot(datas, base_acum, 'r-', label='Baseline (Aterro)', linewidth=2)
-        ax2.plot(datas, thermo_acum, 'orange', label='Termofílica', linewidth=2)
-        ax2.plot(datas, wind_acum, 'green', label='Leiras (TOOL13)', linewidth=2)
-        ax2.fill_between(datas, thermo_acum, wind_acum, color='gray', alpha=0.3, label='Diferença entre tecnologias')
-        ax2.set_title(f'Redução de Emissões em {anos_simulacao} anos (k = {formatar_br(k_ano)} ano⁻¹)')
-        ax2.set_xlabel('Ano')
-        ax2.set_ylabel('tCO₂eq Acumulado')
-        ax2.legend()
-        ax2.grid(True, linestyle='--', alpha=0.7)
-        ax2.yaxis.set_major_formatter(FuncFormatter(br_format))
-        st.pyplot(fig2)
-        plt.close(fig2)
+    st.subheader("💰 Valor Financeiro (Cenário Otimista)")
+    preco = st.session_state.preco_carbono
+    moeda = st.session_state.moeda_carbono
+    cambio = st.session_state.taxa_cambio
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric("Termofílica - Evitado", f"{formatar_br(evitado_thermo)} tCO₂eq")
+        st.metric("Valor (Euro)", f"{moeda} {formatar_br(evitado_thermo * preco)}")
+        st.metric("Valor (R$)", f"R$ {formatar_br(evitado_thermo * preco * cambio)}")
+    with col2:
+        st.metric("Leiras - Evitado", f"{formatar_br(evitado_windrow)} tCO₂eq")
+        st.metric("Valor (Euro)", f"{moeda} {formatar_br(evitado_windrow * preco)}")
+        st.metric("Valor (R$)", f"R$ {formatar_br(evitado_windrow * preco * cambio)}")
 
-        # ANÁLISE SOBOL
-        st.subheader("🎯 Análise de Sensibilidade Global (Sobol) - GWP-20")
-        problem = {'num_vars':3, 'names':['k','T','DOC'], 'bounds':[[0.06,0.40],[20,40],[0.10,0.25]]}
-        param_values = sample(problem, n_samples, seed=50)
-        g20_ch4, g20_n2o = gwps["Otimista (GWP-20)"]
-        with st.spinner("Sobol termofílica..."):
-            res_t = Parallel(n_jobs=1)(delayed(sobol_thermo)(p, g20_ch4, g20_n2o) for p in param_values)
-            Si_t = analyze(problem, np.array(res_t), print_to_console=False)
-        with st.spinner("Sobol leiras..."):
-            res_w = Parallel(n_jobs=1)(delayed(sobol_windrow)(p, g20_ch4, g20_n2o) for p in param_values)
-            Si_w = analyze(problem, np.array(res_w), print_to_console=False)
-        df_sens = pd.DataFrame({
-            'Parâmetro': ['k','T','DOC'],
-            'S1_Termofílica': Si_t['S1'], 'ST_Termofílica': Si_t['ST'],
-            'S1_Leiras': Si_w['S1'], 'ST_Leiras': Si_w['ST']
+    st.subheader("📊 Comparação Anual das Emissões Evitadas")
+    fig, ax = plt.subplots(figsize=(10, 6))
+    x = np.arange(len(df_anual['Year']))
+    width = 0.35
+    ax.bar(x - width/2, df_anual['Evitado_Thermo'], width, label='Termofílica', edgecolor='black', color='orange')
+    ax.bar(x + width/2, df_anual['Evitado_Wind'], width, label='Leiras (TOOL13)', edgecolor='black', color='green', hatch='//')
+    for i, (v1, v2) in enumerate(zip(df_anual['Evitado_Thermo'], df_anual['Evitado_Wind'])):
+        ax.text(i - width/2, v1 + max(v1,v2)*0.01, formatar_br(v1), ha='center', fontsize=9, fontweight='bold')
+        ax.text(i + width/2, v2 + max(v1,v2)*0.01, formatar_br(v2), ha='center', fontsize=9, fontweight='bold')
+    ax.set_xlabel('Ano')
+    ax.set_ylabel('Emissões Evitadas (t CO₂eq)')
+    ax.set_title('Comparação Anual: Termofílica vs Leiras')
+    ax.set_xticks(x)
+    ax.set_xticklabels(df_anual['Year'], fontsize=8)
+    ax.legend()
+    ax.yaxis.set_major_formatter(FuncFormatter(br_format))
+    ax.grid(axis='y', linestyle='--', alpha=0.7)
+    st.pyplot(fig)
+    plt.close(fig)
+
+    st.subheader("📉 Redução de Emissões Acumulada")
+    base_acum = np.cumsum(base_series)
+    thermo_acum = np.cumsum(thermo_series)
+    wind_acum = np.cumsum(wind_series)
+    fig2, ax2 = plt.subplots(figsize=(10,6))
+    ax2.plot(datas, base_acum, 'r-', label='Baseline (Aterro)', linewidth=2)
+    ax2.plot(datas, thermo_acum, 'orange', label='Termofílica', linewidth=2)
+    ax2.plot(datas, wind_acum, 'green', label='Leiras (TOOL13)', linewidth=2)
+    ax2.fill_between(datas, thermo_acum, wind_acum, color='gray', alpha=0.3, label='Diferença entre tecnologias')
+    ax2.set_title(f'Redução de Emissões em {anos_simulacao} anos (k = {formatar_br(k_ano)} ano⁻¹)')
+    ax2.set_xlabel('Data')
+    ax2.set_ylabel('tCO₂eq Acumulado')
+    ax2.legend()
+    ax2.grid(True, linestyle='--', alpha=0.7)
+    ax2.yaxis.set_major_formatter(FuncFormatter(br_format))
+    st.pyplot(fig2)
+    plt.close(fig2)
+
+    # -------------------- 2. TABELA COMPARATIVA DOS TRÊS GWPs (rápido) --------------------
+    st.subheader("📊 Comparação entre Cenários de GWP")
+    gwps = {
+        "Otimista (GWP-20)": (79.7, 273),
+        "Realista (GWP-100)": (27.0, 273),
+        "Pessimista (GWP-500)": (7.2, 130)
+    }
+    comparacao = []
+    for nome, (gwp_ch4, gwp_n2o) in gwps.items():
+        calc_temp = GHGEmissionCalculator()
+        calc_temp.GWP_CH4_20 = gwp_ch4
+        calc_temp.GWP_N2O_20 = gwp_n2o
+        r = calc_temp.calculate_avoided_emissions(residuos_kg_dia, k_ano, T, DOC, umidade, anos_simulacao)
+        comparacao.append({
+            "Cenário": nome,
+            "Termofílica (tCO₂eq)": r['thermo_avoided'],
+            "Leiras (tCO₂eq)": r['wind_avoided']
         })
-        st.dataframe(df_sens.style.format({c:'{:.4f}' for c in df_sens.columns if c != 'Parâmetro'}))
+    df_gwp = pd.DataFrame(comparacao)
+    st.dataframe(df_gwp.style.format({c: lambda x: formatar_br(x) for c in df_gwp.columns if c != "Cenário"}))
 
-        # MONTE CARLO E ESTATÍSTICAS DE DIFERENÇA
-        st.subheader("🎲 Análise de Incerteza (Monte Carlo) e Comparação Estatística")
+    # -------------------- 3. ANÁLISE SOBOL (mais pesada) --------------------
+    st.subheader("🎯 Análise de Sensibilidade Global (Sobol) - GWP-20")
+    problem = {'num_vars':3, 'names':['k','T','DOC'], 'bounds':[[0.06,0.40],[20,40],[0.10,0.25]]}
+    param_values = sample(problem, n_samples, seed=50)
+    g20_ch4, g20_n2o = gwps["Otimista (GWP-20)"]
+    with st.spinner("Executando Sobol para termofílica..."):
+        res_t = Parallel(n_jobs=1)(delayed(sobol_thermo)(p, g20_ch4, g20_n2o) for p in param_values)
+        Si_t = analyze(problem, np.array(res_t), print_to_console=False)
+    with st.spinner("Executando Sobol para leiras..."):
+        res_w = Parallel(n_jobs=1)(delayed(sobol_windrow)(p, g20_ch4, g20_n2o) for p in param_values)
+        Si_w = analyze(problem, np.array(res_w), print_to_console=False)
+    df_sens = pd.DataFrame({
+        'Parâmetro': ['k','T','DOC'],
+        'S1_Termofílica': Si_t['S1'], 'ST_Termofílica': Si_t['ST'],
+        'S1_Leiras': Si_w['S1'], 'ST_Leiras': Si_w['ST']
+    })
+    st.dataframe(df_sens.style.format({c:'{:.4f}' for c in df_sens.columns if c != 'Parâmetro'}))
+
+    # -------------------- 4. MONTE CARLO E ESTATÍSTICAS (mais pesado) --------------------
+    st.subheader("🎲 Análise de Incerteza (Monte Carlo) e Comparação Estatística")
+    with st.spinner("Executando simulações Monte Carlo..."):
         u_mc, t_mc, d_mc = gerar_parametros_mc(n_simulations)
         arr_thermo_mc = []
         arr_wind_mc = []
@@ -519,28 +494,41 @@ if st.session_state.get('run_simulation', False):
         t_stat, t_p = stats.ttest_rel(arr_thermo_mc, arr_wind_mc)
         w_stat, w_p = stats.wilcoxon(arr_thermo_mc, arr_wind_mc)
 
-        st.write(f"**Teste de normalidade (Shapiro-Wilk) da diferença:** estatística = {shapiro_stat:.5f}, p = {shapiro_p:.5f}")
-        st.write(f"**Teste t pareado:** t = {t_stat:.5f}, p = {t_p:.5f}")
-        st.write(f"**Teste de Wilcoxon:** estatística = {w_stat:.5f}, p = {w_p:.5f}")
+    st.write(f"**Teste de normalidade (Shapiro-Wilk) da diferença:** estatística = {shapiro_stat:.5f}, p = {shapiro_p:.5f}")
+    st.write(f"**Teste t pareado:** t = {t_stat:.5f}, p = {t_p:.5f}")
+    st.write(f"**Teste de Wilcoxon:** estatística = {w_stat:.5f}, p = {w_p:.5f}")
 
-        stats_df = pd.DataFrame([
-            {"Tecnologia": "Termofílica", "Média": np.mean(arr_thermo_mc), "Mediana": np.median(arr_thermo_mc),
-             "Desvio Padrão": np.std(arr_thermo_mc), "IC 95% Inf": np.percentile(arr_thermo_mc,2.5),
-             "IC 95% Sup": np.percentile(arr_thermo_mc,97.5)},
-            {"Tecnologia": "Leiras", "Média": np.mean(arr_wind_mc), "Mediana": np.median(arr_wind_mc),
-             "Desvio Padrão": np.std(arr_wind_mc), "IC 95% Inf": np.percentile(arr_wind_mc,2.5),
-             "IC 95% Sup": np.percentile(arr_wind_mc,97.5)}
-        ])
-        st.dataframe(stats_df.style.format({c: lambda x: formatar_br(x) for c in stats_df.columns if c != "Tecnologia"}))
+    stats_df = pd.DataFrame([
+        {"Tecnologia": "Termofílica", "Média": np.mean(arr_thermo_mc), "Mediana": np.median(arr_thermo_mc),
+         "Desvio Padrão": np.std(arr_thermo_mc), "IC 95% Inf": np.percentile(arr_thermo_mc,2.5),
+         "IC 95% Sup": np.percentile(arr_thermo_mc,97.5)},
+        {"Tecnologia": "Leiras", "Média": np.mean(arr_wind_mc), "Mediana": np.median(arr_wind_mc),
+         "Desvio Padrão": np.std(arr_wind_mc), "IC 95% Inf": np.percentile(arr_wind_mc,2.5),
+         "IC 95% Sup": np.percentile(arr_wind_mc,97.5)}
+    ])
+    st.dataframe(stats_df.style.format({c: lambda x: formatar_br(x) for c in stats_df.columns if c != "Tecnologia"}))
 
-        # Tabela anual final formatada
-        st.subheader("📋 Resultados Anuais (Cenário Otimista)")
-        df_anual_fmt = df_anual[['Year', 'base', 'thermo', 'wind', 'Evitado_Thermo', 'Evitado_Wind']].copy()
-        df_anual_fmt.columns = ['Year', 'Baseline (tCO₂eq)', 'Termofílica (tCO₂eq)', 'Leiras (tCO₂eq)', 'Redução Termofílica', 'Redução Leiras']
-        for col in df_anual_fmt.columns:
-            if col != 'Year':
-                df_anual_fmt[col] = df_anual_fmt[col].apply(formatar_br)
-        st.dataframe(df_anual_fmt)
+    # Distribuição das emissões evitadas (gráfico KDE)
+    fig3, ax3 = plt.subplots(figsize=(10,6))
+    sns.kdeplot(arr_thermo_mc, label="Termofílica", linewidth=2, ax=ax3)
+    sns.kdeplot(arr_wind_mc, label="Leiras (TOOL13)", linewidth=2, ax=ax3)
+    ax3.set_title("Distribuição das Emissões Evitadas (Monte Carlo)")
+    ax3.set_xlabel("tCO₂eq")
+    ax3.set_ylabel("Densidade")
+    ax3.legend()
+    ax3.grid(alpha=0.3)
+    ax3.xaxis.set_major_formatter(FuncFormatter(br_format))
+    st.pyplot(fig3)
+    plt.close(fig3)
+
+    # Tabela anual detalhada (já calculada)
+    st.subheader("📋 Resultados Anuais (Cenário Otimista)")
+    df_anual_fmt = df_anual[['Year', 'base', 'thermo', 'wind', 'Evitado_Thermo', 'Evitado_Wind']].copy()
+    df_anual_fmt.columns = ['Year', 'Baseline (tCO₂eq)', 'Termofílica (tCO₂eq)', 'Leiras (tCO₂eq)', 'Redução Termofílica', 'Redução Leiras']
+    for col in df_anual_fmt.columns:
+        if col != 'Year':
+            df_anual_fmt[col] = df_anual_fmt[col].apply(formatar_br)
+    st.dataframe(df_anual_fmt)
 
     st.session_state.run_simulation = False
 

@@ -504,7 +504,7 @@ if st.session_state.get('run_simulation', False):
         - **Otimista (GWP-20)**: destaca o impacto de curto prazo do metano (79,7x CO₂eq) – resulta nas maiores emissões evitadas.  
         - **Realista (GWP-100)**: padrão mais comum em inventários nacionais (27,0x CO₂eq).  
         - **Pessimista (GWP-500)**: reduz drasticamente o peso do metano (7,2x CO₂eq), aproximando-se de uma visão de longo prazo.  
-        - Independentemente do cenário, a **vermocompostagem apresenta as maiores reduções**, seguida pela termofílica e depois pelos fatores padrão UNFCCC.
+        - Independentemente do cenário, a **vermicompostagem apresenta as maiores reduções**, seguida pela termofílica e depois pelos fatores padrão UNFCCC.
         """)
 
         st.subheader(f"💰 Valor Financeiro ({selected})")
@@ -536,7 +536,7 @@ if st.session_state.get('run_simulation', False):
         
         st.success(f"""
         **💡 Análise financeira:**  
-        - A **vermocompostagem** gera aproximadamente **{razao_vt_str}x** mais receita que a termofílica e **{razao_vs_str}x** mais que os fatores padrão.  
+        - A **vermicompostagem** gera aproximadamente **{razao_vt_str}x** mais receita que a termofílica e **{razao_vs_str}x** mais que os fatores padrão.  
         - Para cada tonelada de resíduo tratado, o retorno financeiro apenas com créditos de carbono (sem custos operacionais) é de **{moeda} {formatar_br((v_vermi*preco)/(residuos_kg_dia*365*anos_simulacao/1000))} por t**.
         """)
 
@@ -582,7 +582,7 @@ if st.session_state.get('run_simulation', False):
         
         st.success(f"""
         **📈 Impacto acumulado:**  
-        - Em {anos_simulacao} anos, a **vermocompostagem** evitaria **{formatar_br(base_acum[-1] - vermi_acum[-1])} tCO₂eq** em relação ao aterro.  
+        - Em {anos_simulacao} anos, a **vermicompostagem** evitaria **{formatar_br(base_acum[-1] - vermi_acum[-1])} tCO₂eq** em relação ao aterro.  
         - A termofílica evitaria **{formatar_br(base_acum[-1] - termo_acum[-1])} tCO₂eq**.  
         - Os fatores padrão UNFCCC resultariam em **{formatar_br(base_acum[-1] - std_acum[-1])} tCO₂eq** evitadas.  
         - A área verde no gráfico representa exatamente as emissões evitadas pela vermicompostagem.

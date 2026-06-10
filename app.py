@@ -567,10 +567,52 @@ else:
 
 st.markdown("---")
 st.markdown("""
-**📚 Referências Metodológicas:**
+**📚 Referências Metodológicas Detalhadas**
 
-- **Fatores Padrão UNFCCC:** Metodologia **AMS‑III.F** (v12.0) e ferramenta **TOOL13** (v02.0) – fatores de emissão conservadores aplicáveis a qualquer projeto de compostagem: CH₄ = 0,002 t/t úmido, N₂O = 0,0005 t/t úmido.
-- **Fatores Experimentais (Yang et al., 2017):** Vermicompostagem (CH₄ = 0,0013 t/tC, N₂O = 0,0092 t/tN); Termofílica (CH₄ = 0,0060 t/tC, N₂O = 0,0196 t/tN).
-- **Baseline (Aterro Guatapará, Ribeirão Preto):** Modelo FOD IPCC (2006) com captura de metano = 60% e φ = 0,85 (UNFCCC 2024).
-- **GWP:** Forster et al. (2021) IPCC AR6 (GWP-20, GWP-100, GWP-500).
+**1. Baseline – Aterro Sanitário (Guatapará, Ribeirão Preto)**  
+O cálculo das emissões do aterro combina múltiplas fontes reconhecidas:
+
+- **Modelo de metano (CH₄) – IPCC 2006**  
+  *Diretrizes para Inventários Nacionais de GEE, Volume 5 (Resíduos), Capítulo 3*  
+  - Método FOD (*First Order Decay*).  
+  - Parâmetros default: `MCF = 1,0` (aterro não gerenciado), `F = 0,5` (fração de CH₄ no biogás), `OX = 0,1` (oxidação).  
+  - Taxa de decaimento `k`: 0,06 ano⁻¹ (lento) ou 0,40 ano⁻¹ (rápido) – Tabela 3.3.  
+  - Fração degradável do DOC: `DOCf = 0,0147 × T + 0,28` (correlação com temperatura).
+
+- **Emissões de N₂O no aterro – Wang et al. (2017)**  
+  *"N₂O emissions from landfill sites: a review and meta‑analysis"*  
+  - Fatores médios: `E_open = 1,91 mg N₂O m⁻² h⁻¹` (área exposta), `E_closed = 2,15 mg N₂O m⁻² h⁻¹` (área coberta).  
+  - Ajustes por umidade e fator de abertura diária.
+
+- **Emissões de pré‑descarte – Feng et al. (2020)**  
+  *"CH₄ and N₂O emissions from the storage of municipal solid waste"*  
+  - CH₄: `2,78 μg C kg⁻¹ h⁻¹` (constante diária).  
+  - N₂O: `20,26 mg N kg⁻¹` total em 3 dias, com perfil de emissão diário.
+
+- **Fator de correção climática `φ` – UNFCCC A6.4‑AMT‑003 (2024)**  
+  *"Emissions from solid waste disposal sites" (v01.0)*  
+  - Para clima úmido (precipitação > 1000 mm/ano) → `φ = 0,85`. Aplicado às emissões de CH₄.
+
+- **Captura de metano (60%) – Dado operacional**  
+  Usina de biogás do Aterro CGR Guatapará (Ribeirão Preto) – captura real de aproximadamente 60% do metano gerado.
+
+**2. Tecnologias de compostagem**
+
+- **Fatores padrão UNFCCC (AMS‑III.F / TOOL13)**  
+  Metodologia `AMS‑III.F` (v12.0) e ferramenta `TOOL13` (v02.0) – UNFCCC (2016)  
+  Fatores conservadores: CH₄ = 0,002 t/t úmido; N₂O = 0,0005 t/t úmido.  
+  Aplicáveis a qualquer projeto de compostagem.
+
+- **Fatores experimentais – Yang et al. (2017)**  
+  *"Emissions of CH₄ and N₂O from different composting technologies"* – Waste Management  
+  - Vermicompostagem: CH₄ = 0,0013 t/tC; N₂O = 0,0092 t/tN.  
+  - Compostagem termofílica: CH₄ = 0,0060 t/tC; N₂O = 0,0196 t/tN.
+
+**3. Potencial de Aquecimento Global (GWP)**  
+- Forster et al. (2021) – IPCC AR6, Capítulo 7  
+  - GWP-20: CH₄ = 79,7; N₂O = 273  
+  - GWP-100: CH₄ = 27,0; N₂O = 273  
+  - GWP-500: CH₄ = 7,2; N₂O = 130
+
+**⚠️ Reprodutibilidade:** Todas as simulações usam seed fixa (50) e paralelização com `joblib`. Os parâmetros de entrada podem ser ajustados pelo usuário.
 """)

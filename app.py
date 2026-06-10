@@ -50,10 +50,10 @@ EF_N2O_WINDROW = 0.0005              # t N₂O / t resíduo úmido
 # Parâmetros fixos baseados na literatura (usados pela classe)
 TOC = 0.436                # Carbono orgânico total
 TN = 0.0142                # Nitrogênio total
-F_CH4_VERMI = 0.0013       # Fração de CH4 na vermicompostagem
-F_N2O_VERMI = 0.0092       # Fração de N2O na vermicompostagem
-F_CH4_THERMO = 0.0060      # Fração de CH4 na compostagem termofílica
-F_N2O_THERMO = 0.0196      # Fração de N2O na compostagem termofílica
+F_CH4_VERMI = 0.00013       # Fração de CH4 na vermicompostagem
+F_N2O_VERMI = 0.00092       # Fração de N2O na vermicompostagem
+F_CH4_THERMO = 0.00060      # Fração de CH4 na compostagem termofílica
+F_N2O_THERMO = 0.00196      # Fração de N2O na compostagem termofílica
 COMPOSTING_DAYS = 50       # Duração do processo de compostagem (dias)
 GWP_CH4_20 = 79.7          # GWP-20 para CH4 (Forster et al. 2021)
 GWP_N2O_20 = 273           # GWP-20 para N2O (Forster et al. 2021)

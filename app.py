@@ -368,8 +368,7 @@ with st.sidebar:
     
     st.subheader("🎯 Cenário de GWP para Resultados Principais")
     st.markdown("""
-    O **Potencial de Aquecimento Global (GWP)** define o peso do metano (CH₄) e do óxido nitroso (N₂O) em equivalente CO₂.  
-    A escolha do cenário altera significativamente as emissões evitadas e o valor dos créditos de carbono.
+    O **Potencial de Aquecimento Global (GWP)** define o peso do metano (CH₄) e do óxido nitroso (N₂O) em equivalente CO₂. A escolha do cenário altera significativamente as emissões evitadas e o valor dos créditos de carbono.
     """)
     gwp_option = st.radio(
         "Selecione o cenário:",

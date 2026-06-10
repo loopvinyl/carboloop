@@ -1,4 +1,3 @@
-
 # IMPORTAÇÕES E CONFIGURAÇÕES INICIAIS
 import requests
 import streamlit as st
@@ -28,7 +27,7 @@ plt.rcParams['font.size'] = 10
 sns.set_style("whitegrid")
 
 # =============================================================================
-# PARÂMETROS
+# PARÂMETROS GLOBAIS (constantes)
 # =============================================================================
 CAPTURE_FRACTION_BASELINE = 0.6
 MCF_BASELINE = 1.0
@@ -43,8 +42,52 @@ F_N2O_THERMO = 0.0196
 EF_CH4_WINDROW = 0.002
 EF_N2O_WINDROW = 0.0005
 
-# Classe GHGEmissionCalculator
+COMPOSTING_DAYS = 50
+GWP_CH4_20 = 79.7
+GWP_N2O_20 = 273
+
+# =============================================================================
+# PERFIS DE EMISSÃO (carregados uma única vez - otimização)
+# =============================================================================
+profile_ch4 = np.array([
+    0.02,0.02,0.02,0.03,0.03,0.04,0.04,0.05,0.05,0.06,
+    0.07,0.08,0.09,0.10,0.09,0.08,0.07,0.06,0.05,0.04,
+    0.03,0.02,0.02,0.01,0.01,0.01,0.01,0.01,0.01,0.01,
+    0.005,0.005,0.005,0.005,0.005,0.005,0.005,0.005,0.005,0.005,
+    0.002,0.002,0.002,0.002,0.002,0.001,0.001,0.001,0.001,0.001
+])
+profile_ch4 /= profile_ch4.sum()
+
+profile_n2o = np.array([
+    0.10,0.08,0.15,0.05,0.03,0.04,0.05,0.07,0.10,0.12,
+    0.15,0.18,0.20,0.18,0.15,0.12,0.10,0.08,0.06,0.05,
+    0.04,0.03,0.02,0.02,0.01,0.01,0.01,0.01,0.01,0.01,
+    0.005,0.005,0.005,0.005,0.005,0.002,0.002,0.002,0.002,0.002,
+    0.001,0.001,0.001,0.001,0.001,0.001,0.001,0.001,0.001,0.001
+])
+profile_n2o /= profile_n2o.sum()
+
+profile_n2o_landfill = {1:0.10,2:0.30,3:0.40,4:0.15,5:0.05}
+profile_n2o_pre = {1:0.8623,2:0.10,3:0.0377}
+
+# Emissões de pré-descarte (constantes)
+CH4_pre_ugC_per_kg_h = 2.78
+CH4_pre_kg_per_kg_day = CH4_pre_ugC_per_kg_h * (16/12) * 24 / 1_000_000_000
+N2O_pre_mgN_per_kg_total = 20.26
+N2O_pre_kg_per_kg_total = N2O_pre_mgN_per_kg_total * (44/28) / 1_000_000
+
+# =============================================================================
+# CLASSE DE CÁLCULO (otimizada)
+# =============================================================================
 class GHGEmissionCalculator:
+    # Atributos estáticos (compartilhados entre instâncias)
+    profile_ch4 = profile_ch4
+    profile_n2o = profile_n2o
+    profile_n2o_landfill = profile_n2o_landfill
+    profile_n2o_pre = profile_n2o_pre
+    CH4_pre_kg_per_kg_day = CH4_pre_kg_per_kg_day
+    N2O_pre_kg_per_kg_total = N2O_pre_kg_per_kg_total
+
     def __init__(self):
         self.MCF = MCF_BASELINE
         self.F = 0.5
@@ -56,37 +99,9 @@ class GHGEmissionCalculator:
         self.f_N2O_thermo = F_N2O_THERMO
         self.EF_CH4_windrow = EF_CH4_WINDROW
         self.EF_N2O_windrow = EF_N2O_WINDROW
-        self.COMPOSTING_DAYS = 50
-        self.GWP_CH4_20 = 79.7
-        self.GWP_N2O_20 = 273
-        self._load_profiles()
-        self._setup_pre_disposal()
-
-    def _load_profiles(self):
-        self.profile_ch4 = np.array([
-            0.02,0.02,0.02,0.03,0.03,0.04,0.04,0.05,0.05,0.06,
-            0.07,0.08,0.09,0.10,0.09,0.08,0.07,0.06,0.05,0.04,
-            0.03,0.02,0.02,0.01,0.01,0.01,0.01,0.01,0.01,0.01,
-            0.005,0.005,0.005,0.005,0.005,0.005,0.005,0.005,0.005,0.005,
-            0.002,0.002,0.002,0.002,0.002,0.001,0.001,0.001,0.001,0.001
-        ])
-        self.profile_ch4 /= self.profile_ch4.sum()
-        self.profile_n2o = np.array([
-            0.10,0.08,0.15,0.05,0.03,0.04,0.05,0.07,0.10,0.12,
-            0.15,0.18,0.20,0.18,0.15,0.12,0.10,0.08,0.06,0.05,
-            0.04,0.03,0.02,0.02,0.01,0.01,0.01,0.01,0.01,0.01,
-            0.005,0.005,0.005,0.005,0.005,0.002,0.002,0.002,0.002,0.002,
-            0.001,0.001,0.001,0.001,0.001,0.001,0.001,0.001,0.001,0.001
-        ])
-        self.profile_n2o /= self.profile_n2o.sum()
-        self.profile_n2o_landfill = {1:0.10,2:0.30,3:0.40,4:0.15,5:0.05}
-
-    def _setup_pre_disposal(self):
-        CH4_pre_ugC_per_kg_h = 2.78
-        self.CH4_pre_kg_per_kg_day = CH4_pre_ugC_per_kg_h * (16/12) * 24 / 1_000_000_000
-        N2O_pre_mgN_per_kg_total = 20.26
-        self.N2O_pre_kg_per_kg_total = N2O_pre_mgN_per_kg_total * (44/28) / 1_000_000
-        self.profile_n2o_pre = {1:0.8623,2:0.10,3:0.0377}
+        self.COMPOSTING_DAYS = COMPOSTING_DAYS
+        self.GWP_CH4_20 = GWP_CH4_20
+        self.GWP_N2O_20 = GWP_N2O_20
 
     def calculate_landfill_emissions(self, w_kg_day, k, temp, doc, umid, years=20,
                                      phi=PHI_BASELINE, capt=CAPTURE_FRACTION_BASELINE):
@@ -97,24 +112,23 @@ class GHGEmissionCalculator:
         kernel = np.exp(-k*(t-1)/365.0) - np.exp(-k*t/365.0)
         ch4 = np.convolve(np.ones(days), kernel, mode='full')[:days] * ch4_pot_kg
         ch4 = ch4 * phi * (1 - capt)
+
         opening_factor = min(1.0, (100/w_kg_day)*(8/24))
         E_avg = opening_factor*1.91 + (1-opening_factor)*2.15
         moisture_factor = (1-umid)/(1-0.55)
         daily_n2o_kg = (E_avg * moisture_factor * (44/28) / 1_000_000) * w_kg_day
         kernel_n2o = np.array([self.profile_n2o_landfill.get(d,0) for d in range(1,6)])
         n2o = np.convolve(np.full(days, daily_n2o_kg), kernel_n2o, mode='full')[:days]
-        ch4_pre, n2o_pre = self._pre_disposal(w_kg_day, days)
-        return ch4 + ch4_pre, n2o + n2o_pre
 
-    def _pre_disposal(self, w_kg_day, days):
-        ch4 = np.full(days, w_kg_day * self.CH4_pre_kg_per_kg_day)
-        n2o = np.zeros(days)
+        # Pré-descarte
+        ch4_pre = np.full(days, w_kg_day * self.CH4_pre_kg_per_kg_day)
+        n2o_pre = np.zeros(days)
         for e in range(days):
             for dd, frac in self.profile_n2o_pre.items():
                 idx = e + dd - 1
                 if idx < days:
-                    n2o[idx] += w_kg_day * self.N2O_pre_kg_per_kg_total * frac
-        return ch4, n2o
+                    n2o_pre[idx] += w_kg_day * self.N2O_pre_kg_per_kg_total * frac
+        return ch4 + ch4_pre, n2o + n2o_pre
 
     def calculate_thermophilic_emissions(self, w_kg_day, umid, years=20):
         days = years*365
@@ -150,6 +164,7 @@ class GHGEmissionCalculator:
                     n2o[ed] += n2o_batch_kg * self.profile_n2o[d]
         return ch4, n2o
 
+    # Método completo (com séries) para gráficos determinísticos
     def calculate_avoided_emissions(self, w_kg_day, k, temp, doc, umid, years):
         ch4_l, n2o_l = self.calculate_landfill_emissions(w_kg_day, k, temp, doc, umid, years)
         ch4_t, n2o_t = self.calculate_thermophilic_emissions(w_kg_day, umid, years)
@@ -163,6 +178,16 @@ class GHGEmissionCalculator:
             'wind_avoided': base.sum() - wind.sum(),
             'base_series': base, 'thermo_series': thermo, 'wind_series': wind
         }
+
+    # Método rápido (apenas totais) para Monte Carlo e Sobol
+    def calculate_avoided_emissions_fast(self, w_kg_day, k, temp, doc, umid, years):
+        ch4_l, n2o_l = self.calculate_landfill_emissions(w_kg_day, k, temp, doc, umid, years)
+        ch4_t, n2o_t = self.calculate_thermophilic_emissions(w_kg_day, umid, years)
+        ch4_w, n2o_w = self.calculate_windrow_emissions(w_kg_day, umid, years)
+        base = (ch4_l*self.GWP_CH4_20 + n2o_l*self.GWP_N2O_20)/1000
+        thermo = (ch4_t*self.GWP_CH4_20 + n2o_t*self.GWP_N2O_20)/1000
+        wind = (ch4_w*self.GWP_CH4_20 + n2o_w*self.GWP_N2O_20)/1000
+        return base.sum() - thermo.sum(), base.sum() - wind.sum()
 
 
 # =============================================================================
@@ -287,13 +312,13 @@ inicializar_session_state()
 # INTERFACE PRINCIPAL
 st.title("Comparação de Tecnologias de Compostagem para Créditos de Carbono")
 st.markdown("""
-Esta ferramenta compara **duas tecnologias de compostagem** Termofílica com fatores de emissões contidos em Yang et al. (2017) e Convencional em Leiras com fatores de emissões do TOOL13 da ONU com o **cenário baseline (aterro sanitário)** calibrado para Ribeirão Preto (aterro CGR Guatapará com captura de biogás).  
+Esta ferramenta compara **duas tecnologias de compostagem**: **Termofílica** (fatores de Yang et al., 2017) e **Convencional em Leiras** (fatores do **TOOL13** – ferramenta da metodologia **AMS‑III.F** da UNFCCC) com o **cenário baseline (aterro sanitário)** calibrado para Ribeirão Preto (aterro CGR Guatapará com captura de biogás).  
 **Estatísticas de diferença significativa** entre as emissões evitadas são calculadas via Monte Carlo.
 
 **Metodologias:**  
-- **Baseline:** A6.4‑AMT‑003 (MCF=1,0; captura=60%; φ=0,85)  
-- **Termofílica (Yang et al., 2017):** CH₄=0,0060 t/tC; N₂O=0,0196 t/tN  
-- **Leiras (TOOL13):** CH₄=0,002 t/t úmido; N₂O=0,0005 t/t úmido
+- **Baseline:** A6.4‑AMT‑003 (UNFCCC, 2024) – modelo FOD do IPCC  
+- **Compostagem em Leiras (TOOL13):** parte integrante da metodologia AMS‑III.F (UNFCCC, 2016) – fatores padrão: CH₄ = 0,002 t/t úmido; N₂O = 0,0005 t/t úmido  
+- **Compostagem Termofílica (Yang et al., 2017):** apenas para comparação científica (não segue a AMS‑III.F) – CH₄ = 0,0060 t/tC; N₂O = 0,0196 t/tN
 """)
 
 exibir_cotacao_carbono()
@@ -315,42 +340,53 @@ with st.sidebar:
         st.session_state.run_simulation = True
 
 # =============================================================================
-# FUNÇÕES PARA SOBOL E MONTE CARLO
+# FUNÇÕES COM CACHE PARA ANÁLISES PESADAS (otimização crítica)
 # =============================================================================
-def sobol_thermo(params, gwp_ch4, gwp_n2o):
-    k, temp, doc = params
-    np.random.seed(50)
+@st.cache_data(show_spinner=False)
+def cached_sobol(n_samples, residuos_kg_dia, k_ano, T, DOC, umidade, anos_simulacao, gwp_ch4, gwp_n2o):
+    """Executa análise de sensibilidade Sobol com cache."""
+    problem = {'num_vars':3, 'names':['k','T','DOC'], 'bounds':[[0.06,0.40],[20,40],[0.10,0.25]]}
+    param_values = sample(problem, n_samples, seed=50)
     calc = GHGEmissionCalculator()
     calc.GWP_CH4_20 = gwp_ch4
     calc.GWP_N2O_20 = gwp_n2o
-    res = calc.calculate_avoided_emissions(residuos_kg_dia, k, temp, doc, umidade, anos_simulacao)
-    return res['thermo_avoided']
-
-def sobol_windrow(params, gwp_ch4, gwp_n2o):
-    k, temp, doc = params
-    np.random.seed(50)
-    calc = GHGEmissionCalculator()
-    calc.GWP_CH4_20 = gwp_ch4
-    calc.GWP_N2O_20 = gwp_n2o
-    res = calc.calculate_avoided_emissions(residuos_kg_dia, k, temp, doc, umidade, anos_simulacao)
-    return res['wind_avoided']
-
-def gerar_parametros_mc(n):
-    np.random.seed(50)
-    u = np.random.uniform(0.75, 0.90, n)
-    t = np.random.normal(25, 3, n)
-    d = np.random.triangular(0.12, 0.15, 0.18, n)
-    return u, t, d
-
-def run_montecarlo_single(i, gwp_ch4, gwp_n2o, u_arr, t_arr, d_arr):
-    np.random.seed(50 + i)
-    calc_mc = GHGEmissionCalculator()
-    calc_mc.GWP_CH4_20 = gwp_ch4
-    calc_mc.GWP_N2O_20 = gwp_n2o
-    r_mc = calc_mc.calculate_avoided_emissions(
-        residuos_kg_dia, k_ano, t_arr[i], d_arr[i], u_arr[i], anos_simulacao
+    
+    # Paralelização total
+    res_t = Parallel(n_jobs=-1)(
+        delayed(calc.calculate_avoided_emissions_fast)(residuos_kg_dia, p[0], p[1], p[2], umidade, anos_simulacao)[0]
+        for p in param_values
     )
-    return r_mc['thermo_avoided'], r_mc['wind_avoided']
+    res_w = Parallel(n_jobs=-1)(
+        delayed(calc.calculate_avoided_emissions_fast)(residuos_kg_dia, p[0], p[1], p[2], umidade, anos_simulacao)[1]
+        for p in param_values
+    )
+    Si_t = analyze(problem, np.array(res_t), print_to_console=False)
+    Si_w = analyze(problem, np.array(res_w), print_to_console=False)
+    return Si_t, Si_w
+
+@st.cache_data(show_spinner=False)
+def cached_montecarlo(n_simulations, residuos_kg_dia, k_ano, T, DOC, umidade, anos_simulacao, gwp_ch4, gwp_n2o):
+    """Executa Monte Carlo com cache."""
+    np.random.seed(50)
+    u = np.random.uniform(0.75, 0.90, n_simulations)
+    t = np.random.normal(25, 3, n_simulations)
+    d = np.random.triangular(0.12, 0.15, 0.18, n_simulations)
+    
+    calc = GHGEmissionCalculator()
+    calc.GWP_CH4_20 = gwp_ch4
+    calc.GWP_N2O_20 = gwp_n2o
+    
+    def run_one(i):
+        np.random.seed(50 + i)
+        thermo, wind = calc.calculate_avoided_emissions_fast(
+            residuos_kg_dia, k_ano, t[i], d[i], u[i], anos_simulacao
+        )
+        return thermo, wind
+    
+    resultados = Parallel(n_jobs=-1)(delayed(run_one)(i) for i in range(n_simulations))
+    arr_thermo = np.array([r[0] for r in resultados])
+    arr_wind = np.array([r[1] for r in resultados])
+    return arr_thermo, arr_wind
 
 # =============================================================================
 # EXECUÇÃO PRINCIPAL
@@ -382,9 +418,9 @@ if st.session_state.get('run_simulation', False):
     **Parâmetros calibrados para Ribeirão Preto:**  
     - k = {formatar_br(k_ano)} ano⁻¹, T = {formatar_br(T)} °C, DOC = {formatar_br(DOC)}, Umidade = {formatar_br(umidade_valor)}%  
     - Resíduos totais: {formatar_br(residuos_kg_dia * 365 * anos_simulacao / 1000)} t  
-    - **Aterro:** MCF = 1,0; captura = 60%; φ = 0,85  
-    - **Termofílica (Yang et al., 2017)**  
-    - **Leiras (TOOL13)** – fatores: CH₄ = 0,002 t/t; N₂O = 0,0005 t/t
+    - **Aterro (baseline):** MCF = 1,0; captura de metano = 60%; φ = 0,85 (A6.4‑AMT‑003)  
+    - **Compostagem em Leiras (TOOL13):** fatores padrão da metodologia AMS‑III.F – CH₄ = 0,002 t/t úmido; N₂O = 0,0005 t/t úmido  
+    - **Compostagem Termofílica (Yang et al., 2017):** apenas para comparação – CH₄ = 0,0060 t/tC; N₂O = 0,0196 t/tN
     """)
 
     st.subheader("💰 Valor Financeiro (Cenário Otimista)")
@@ -401,18 +437,18 @@ if st.session_state.get('run_simulation', False):
         st.metric("Valor (Euro)", f"{moeda} {formatar_br(evitado_windrow * preco)}")
         st.metric("Valor (R$)", f"R$ {formatar_br(evitado_windrow * preco * cambio)}")
 
-    st.subheader("📊 Comparação Anual das Emissões Evitadas")
+    st.subheader("📊 Comparação Anual das Emissões Evitadas por Tecnologia")
     fig, ax = plt.subplots(figsize=(10, 6))
     x = np.arange(len(df_anual['Year']))
     width = 0.35
     ax.bar(x - width/2, df_anual['Evitado_Thermo'], width, label='Termofílica (Yang et al., 2017)', edgecolor='black', color='orange')
-    ax.bar(x + width/2, df_anual['Evitado_Wind'], width, label='Leiras (TOOL13)', edgecolor='black', color='green', hatch='//')
+    ax.bar(x + width/2, df_anual['Evitado_Wind'], width, label='Leiras (TOOL13) / AMS‑III.F', edgecolor='black', color='green', hatch='//')
     for i, (v1, v2) in enumerate(zip(df_anual['Evitado_Thermo'], df_anual['Evitado_Wind'])):
         ax.text(i - width/2, v1 + max(v1,v2)*0.01, formatar_br(v1), ha='center', fontsize=9, fontweight='bold')
         ax.text(i + width/2, v2 + max(v1,v2)*0.01, formatar_br(v2), ha='center', fontsize=9, fontweight='bold')
-    ax.set_xlabel('Ano')
-    ax.set_ylabel('Emissões Evitadas (t CO₂eq)')
-    ax.set_title('Comparação Anual: Termofílica (Yang et al., 2017) vs Leiras (TOOL13)')
+    ax.set_xlabel('Ano', fontsize=12)
+    ax.set_ylabel('Emissões Evitadas (t CO₂eq)', fontsize=12)
+    ax.set_title('Comparação Anual: Emissões Evitadas pela Termofílica (Yang et al., 2017) vs Leiras (TOOL13 / AMS‑III.F)', fontsize=13)
     ax.set_xticks(x)
     ax.set_xticklabels(df_anual['Year'], fontsize=8)
     ax.legend()
@@ -421,25 +457,25 @@ if st.session_state.get('run_simulation', False):
     st.pyplot(fig)
     plt.close(fig)
 
-    st.subheader("📉 Emissões Evitadas Acumuladas")
+    st.subheader("📉 Emissões Acumuladas ao Longo do Tempo: Baseline vs Tecnologias")
     base_acum = np.cumsum(base_series)
     thermo_acum = np.cumsum(thermo_series)
     wind_acum = np.cumsum(wind_series)
     fig2, ax2 = plt.subplots(figsize=(10,6))
-    ax2.plot(datas, base_acum, 'r-', label='Baseline (Aterro)', linewidth=2)
+    ax2.plot(datas, base_acum, 'r-', label='Baseline (Aterro Sanitário)', linewidth=2)
     ax2.plot(datas, thermo_acum, 'orange', label='Termofílica (Yang et al., 2017)', linewidth=2)
-    ax2.plot(datas, wind_acum, 'green', label='Leiras (TOOL13)', linewidth=2)
-    ax2.fill_between(datas, thermo_acum, wind_acum, color='gray', alpha=0.3, label='Diferença entre tecnologias')
-    ax2.set_title(f'Emissões Evitadas em {anos_simulacao} anos (k = {formatar_br(k_ano)} ano⁻¹)')
-    ax2.set_xlabel('Data')
-    ax2.set_ylabel('tCO₂eq Acumulado')
+    ax2.plot(datas, wind_acum, 'green', label='Leiras (TOOL13 / AMS‑III.F)', linewidth=2)
+    ax2.fill_between(datas, thermo_acum, wind_acum, color='gray', alpha=0.3, label='Diferença entre as duas tecnologias de compostagem')
+    ax2.set_title(f'Emissões Acumuladas (tCO₂eq) – {anos_simulacao} anos de simulação (k = {formatar_br(k_ano)} ano⁻¹)', fontsize=13)
+    ax2.set_xlabel('Data', fontsize=12)
+    ax2.set_ylabel('tCO₂eq Acumulado', fontsize=12)
     ax2.legend()
     ax2.grid(True, linestyle='--', alpha=0.7)
     ax2.yaxis.set_major_formatter(FuncFormatter(br_format))
     st.pyplot(fig2)
     plt.close(fig2)
 
-    # -------------------- 2. TABELA COMPARATIVA DOS TRÊS GWPs (com emissões evitadas) --------------------
+    # -------------------- 2. TABELA COMPARATIVA DOS TRÊS GWPs --------------------
     st.subheader("📊 Comparação entre Cenários de GWP – Emissões Evitadas (tCO₂eq)")
     gwps = {
         "Otimista (GWP-20)": (79.7, 273),
@@ -451,43 +487,37 @@ if st.session_state.get('run_simulation', False):
         calc_temp = GHGEmissionCalculator()
         calc_temp.GWP_CH4_20 = gwp_ch4
         calc_temp.GWP_N2O_20 = gwp_n2o
-        r = calc_temp.calculate_avoided_emissions(residuos_kg_dia, k_ano, T, DOC, umidade, anos_simulacao)
+        thermo_avoided, wind_avoided = calc_temp.calculate_avoided_emissions_fast(
+            residuos_kg_dia, k_ano, T, DOC, umidade, anos_simulacao
+        )
         comparacao.append({
             "Cenário": nome,
-            "Termofílica (Yang et al., 2017)": r['thermo_avoided'],
-            "Leiras (TOOL13)": r['wind_avoided']
+            "Termofílica (Yang et al., 2017)": thermo_avoided,
+            "Leiras (TOOL13) / AMS‑III.F": wind_avoided
         })
     df_gwp = pd.DataFrame(comparacao)
     st.dataframe(df_gwp.style.format({c: lambda x: formatar_br(x) for c in df_gwp.columns if c != "Cenário"}))
 
-    # -------------------- 3. ANÁLISE SOBOL --------------------
+    # -------------------- 3. ANÁLISE SOBOL (com cache e paralelismo total) --------------------
     st.subheader("🎯 Análise de Sensibilidade Global (Sobol) - GWP-20")
-    problem = {'num_vars':3, 'names':['k','T','DOC'], 'bounds':[[0.06,0.40],[20,40],[0.10,0.25]]}
-    param_values = sample(problem, n_samples, seed=50)
-    g20_ch4, g20_n2o = gwps["Otimista (GWP-20)"]
-    with st.spinner("Executando Sobol para termofílica..."):
-        res_t = Parallel(n_jobs=1)(delayed(sobol_thermo)(p, g20_ch4, g20_n2o) for p in param_values)
-        Si_t = analyze(problem, np.array(res_t), print_to_console=False)
-    with st.spinner("Executando Sobol para leiras..."):
-        res_w = Parallel(n_jobs=1)(delayed(sobol_windrow)(p, g20_ch4, g20_n2o) for p in param_values)
-        Si_w = analyze(problem, np.array(res_w), print_to_console=False)
+    with st.spinner("Executando análise Sobol (paralelizada com cache)..."):
+        g20_ch4, g20_n2o = gwps["Otimista (GWP-20)"]
+        Si_t, Si_w = cached_sobol(
+            n_samples, residuos_kg_dia, k_ano, T, DOC, umidade, anos_simulacao, g20_ch4, g20_n2o
+        )
     df_sens = pd.DataFrame({
         'Parâmetro': ['k','T','DOC'],
         'S1_Termofílica (Yang et al., 2017)': Si_t['S1'], 'ST_Termofílica (Yang et al., 2017)': Si_t['ST'],
-        'S1_Leiras (TOOL13)': Si_w['S1'], 'ST_Leiras (TOOL13)': Si_w['ST']
+        'S1_Leiras (TOOL13 / AMS‑III.F)': Si_w['S1'], 'ST_Leiras (TOOL13 / AMS‑III.F)': Si_w['ST']
     })
     st.dataframe(df_sens.style.format({c:'{:.4f}' for c in df_sens.columns if c != 'Parâmetro'}))
 
-    # -------------------- 4. MONTE CARLO --------------------
+    # -------------------- 4. MONTE CARLO (com cache e paralelismo total) --------------------
     st.subheader("🎲 Análise de Incerteza (Monte Carlo) e Comparação Estatística")
-    with st.spinner("Executando simulações Monte Carlo (paralelizado)..."):
-        u_mc, t_mc, d_mc = gerar_parametros_mc(n_simulations)
-        resultados = Parallel(n_jobs=-1)(
-            delayed(run_montecarlo_single)(i, g20_ch4, g20_n2o, u_mc, t_mc, d_mc)
-            for i in range(n_simulations)
+    with st.spinner("Executando simulações Monte Carlo (paralelizado com cache)..."):
+        arr_thermo_mc, arr_wind_mc = cached_montecarlo(
+            n_simulations, residuos_kg_dia, k_ano, T, DOC, umidade, anos_simulacao, g20_ch4, g20_n2o
         )
-        arr_thermo_mc = np.array([r[0] for r in resultados])
-        arr_wind_mc = np.array([r[1] for r in resultados])
         diff = arr_thermo_mc - arr_wind_mc
 
         shapiro_stat, shapiro_p = stats.shapiro(diff)
@@ -502,7 +532,7 @@ if st.session_state.get('run_simulation', False):
         {"Tecnologia": "Termofílica (Yang et al., 2017)", "Média": np.mean(arr_thermo_mc), "Mediana": np.median(arr_thermo_mc),
          "Desvio Padrão": np.std(arr_thermo_mc), "IC 95% Inf": np.percentile(arr_thermo_mc,2.5),
          "IC 95% Sup": np.percentile(arr_thermo_mc,97.5)},
-        {"Tecnologia": "Leiras (TOOL13)", "Média": np.mean(arr_wind_mc), "Mediana": np.median(arr_wind_mc),
+        {"Tecnologia": "Leiras (TOOL13 / AMS‑III.F)", "Média": np.mean(arr_wind_mc), "Mediana": np.median(arr_wind_mc),
          "Desvio Padrão": np.std(arr_wind_mc), "IC 95% Inf": np.percentile(arr_wind_mc,2.5),
          "IC 95% Sup": np.percentile(arr_wind_mc,97.5)}
     ])
@@ -511,10 +541,10 @@ if st.session_state.get('run_simulation', False):
     # Distribuição das emissões evitadas
     fig3, ax3 = plt.subplots(figsize=(10,6))
     sns.kdeplot(arr_thermo_mc, label="Termofílica (Yang et al., 2017)", linewidth=2, ax=ax3)
-    sns.kdeplot(arr_wind_mc, label="Leiras (TOOL13)", linewidth=2, ax=ax3)
-    ax3.set_title("Distribuição das Emissões Evitadas (Monte Carlo)")
-    ax3.set_xlabel("tCO₂eq")
-    ax3.set_ylabel("Densidade")
+    sns.kdeplot(arr_wind_mc, label="Leiras (TOOL13 / AMS‑III.F)", linewidth=2, ax=ax3)
+    ax3.set_title("Distribuição de Probabilidade das Emissões Evitadas – Monte Carlo", fontsize=13)
+    ax3.set_xlabel("Emissões Evitadas (tCO₂eq)", fontsize=12)
+    ax3.set_ylabel("Densidade de Probabilidade", fontsize=12)
     ax3.legend()
     ax3.grid(alpha=0.3)
     ax3.xaxis.set_major_formatter(FuncFormatter(br_format))
@@ -522,9 +552,9 @@ if st.session_state.get('run_simulation', False):
     plt.close(fig3)
 
     # Tabela anual detalhada
-    st.subheader("📋 Resultados Anuais (Cenário Otimista)")
+    st.subheader("📋 Resultados Anuais (Cenário Otimista GWP-20)")
     df_anual_fmt = df_anual[['Year', 'base', 'thermo', 'wind', 'Evitado_Thermo', 'Evitado_Wind']].copy()
-    df_anual_fmt.columns = ['Year', 'Baseline (tCO₂eq)', 'Termofílica (Yang et al., 2017) (tCO₂eq)', 'Leiras (TOOL13) (tCO₂eq)', 'Emissões Evitadas Termofílica (Yang et al., 2017)', 'Emissões Evitadas Leiras (TOOL13)']
+    df_anual_fmt.columns = ['Year', 'Baseline (tCO₂eq)', 'Termofílica (Yang et al., 2017) (tCO₂eq)', 'Leiras (TOOL13 / AMS‑III.F) (tCO₂eq)', 'Emissões Evitadas Termofílica (Yang et al., 2017)', 'Emissões Evitadas Leiras (TOOL13 / AMS‑III.F)']
     for col in df_anual_fmt.columns:
         if col != 'Year':
             df_anual_fmt[col] = df_anual_fmt[col].apply(formatar_br)
@@ -537,12 +567,16 @@ else:
 
 st.markdown("---")
 st.markdown("""
-**📚 Referências:**  
-- **AMS‑III.F (v12.0)** – *Avoidance of methane emissions through composting* (UNFCCC, 2016)  
-- **TOOL13 (v02.0)** – *Project and leakage emissions from composting* (UNFCCC, 2017)  
-- **A6.4‑AMT‑003 (v01.0)** – *Emissions from solid waste disposal sites* (UNFCCC, 2024)  
-- **Termofílica (Yang et al., 2017):** *Waste Management*, 66, 44-51 (DOI: 10.1016/j.wasman.2017.04.033) – CH₄=0,0060 t/tC; N₂O=0,0196 t/tN  
-- **Leiras (TOOL13):** Fatores padrão – CH₄=0,002 t/t úmido; N₂O=0,0005 t/t úmido  
-- **GWP-20** – Forster et al. (2021) IPCC AR6  
-- **Aterro CGR Guatapará (Ribeirão Preto):** usina de biogás com captura estimada de 60% do metano gerado.
+**📚 Referências metodológicas:**  
+- **AMS‑III.F (v12.0)** – *Avoidance of methane emissions through composting* (UNFCCC, 2016) – metodologia guarda‑chuva para projetos de compostagem.  
+- **TOOL13 (v02.0)** – *Project and leakage emissions from composting* (UNFCCC, 2017) – ferramenta obrigatória para cálculo das emissões do projeto no âmbito da **AMS‑III.F**.  
+- **A6.4‑AMT‑003 (v01.0)** – *Emissions from solid waste disposal sites* (UNFCCC, 2024) – usada para o baseline (aterro).  
+
+**Tecnologias comparadas:**  
+- **Compostagem em Leiras (TOOL13 / AMS‑III.F):** fatores padrão da ferramenta (CH₄ = 0,002 t/t úmido; N₂O = 0,0005 t/t úmido). **Tecnologia alinhada à metodologia da ONU.**  
+- **Compostagem Termofílica (Yang et al., 2017):** fatores experimentais (CH₄ = 0,0060 t/tC; N₂O = 0,0196 t/tN) – **não segue a AMS‑III.F**, apenas para comparação científica.  
+
+**Outras referências:**  
+- GWP-20: Forster et al. (2021) IPCC AR6  
+- Aterro CGR Guatapará (Ribeirão Preto): usina de biogás com captura estimada de 60% do metano gerado.
 """)

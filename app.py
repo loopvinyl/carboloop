@@ -1,4 +1,4 @@
-# IMPORTAÇÕES E CONFIGURAÇÕES INICIAIS (mesmo do script anterior)
+# IMPORTAÇÕES E CONFIGURAÇÕES INICIAIS
 import requests
 import streamlit as st
 import numpy as np
@@ -27,7 +27,7 @@ plt.rcParams['font.size'] = 10
 sns.set_style("whitegrid")
 
 # =============================================================================
-# PARÂMETROS (mesmos do script anterior)
+# PARÂMETROS
 # =============================================================================
 CAPTURE_FRACTION_BASELINE = 0.6
 MCF_BASELINE = 1.0
@@ -42,7 +42,7 @@ F_N2O_THERMO = 0.0196
 EF_CH4_WINDROW = 0.002
 EF_N2O_WINDROW = 0.0005
 
-# Classe GHGEmissionCalculator (exatamente igual à última versão funcional)
+# Classe GHGEmissionCalculator
 class GHGEmissionCalculator:
     def __init__(self):
         self.MCF = MCF_BASELINE
@@ -165,7 +165,7 @@ class GHGEmissionCalculator:
 
 
 # =============================================================================
-# FUNÇÕES DE COTAÇÃO, FORMATAÇÃO E INTERFACE (mantidas iguais)
+# FUNÇÕES DE COTAÇÃO, FORMATAÇÃO E INTERFACE
 # =============================================================================
 def obter_cotacao_carbono():
     try:
@@ -286,13 +286,13 @@ inicializar_session_state()
 # INTERFACE PRINCIPAL
 st.title("Comparação de Tecnologias de Compostagem para Créditos de Carbono")
 st.markdown("""
-Esta ferramenta compara **duas tecnologias de compostagem** (termofílica e em leiras) com o **cenário baseline (aterro sanitário)** calibrado para Ribeirão Preto (aterro CGR Guatapará com captura de biogás).  
+Esta ferramenta compara **duas tecnologias de compostagem** (Termofílica (Yang et al., 2017) e Leiras (TOOL13)) com o **cenário baseline (aterro sanitário)** calibrado para Ribeirão Preto (aterro CGR Guatapará com captura de biogás).  
 **Estatísticas de diferença significativa** entre as emissões evitadas são calculadas via Monte Carlo.
 
 **Metodologias:**  
 - **Baseline:** A6.4‑AMT‑003 (MCF=1,0; captura=60%; φ=0,85)  
-- **Termofílica:** Yang et al. (2017) – CH₄=0,0060 t/tC; N₂O=0,0196 t/tN  
-- **Leiras:** TOOL13 (2017) – CH₄=0,002 t/t úmido; N₂O=0,0005 t/t úmido
+- **Termofílica (Yang et al., 2017):** CH₄=0,0060 t/tC; N₂O=0,0196 t/tN  
+- **Leiras (TOOL13):** CH₄=0,002 t/t úmido; N₂O=0,0005 t/t úmido
 """)
 
 exibir_cotacao_carbono()
@@ -314,11 +314,11 @@ with st.sidebar:
         st.session_state.run_simulation = True
 
 # =============================================================================
-# FUNÇÕES PARA SOBOL E MONTE CARLO (com paralelismo no Monte Carlo)
+# FUNÇÕES PARA SOBOL E MONTE CARLO
 # =============================================================================
 def sobol_thermo(params, gwp_ch4, gwp_n2o):
     k, temp, doc = params
-    np.random.seed(50)  # seed fixo para reprodutibilidade dentro de cada worker
+    np.random.seed(50)
     calc = GHGEmissionCalculator()
     calc.GWP_CH4_20 = gwp_ch4
     calc.GWP_N2O_20 = gwp_n2o
@@ -341,9 +341,8 @@ def gerar_parametros_mc(n):
     d = np.random.triangular(0.12, 0.15, 0.18, n)
     return u, t, d
 
-# Função auxiliar para uma única execução do Monte Carlo (usada no paralelismo)
 def run_montecarlo_single(i, gwp_ch4, gwp_n2o, u_arr, t_arr, d_arr):
-    np.random.seed(50 + i)  # seed diferente para cada simulação (evita correlação)
+    np.random.seed(50 + i)
     calc_mc = GHGEmissionCalculator()
     calc_mc.GWP_CH4_20 = gwp_ch4
     calc_mc.GWP_N2O_20 = gwp_n2o
@@ -353,7 +352,7 @@ def run_montecarlo_single(i, gwp_ch4, gwp_n2o, u_arr, t_arr, d_arr):
     return r_mc['thermo_avoided'], r_mc['wind_avoided']
 
 # =============================================================================
-# EXECUÇÃO PRINCIPAL (com ordem de exibição progressiva)
+# EXECUÇÃO PRINCIPAL
 # =============================================================================
 if st.session_state.get('run_simulation', False):
 
@@ -383,8 +382,8 @@ if st.session_state.get('run_simulation', False):
     - k = {formatar_br(k_ano)} ano⁻¹, T = {formatar_br(T)} °C, DOC = {formatar_br(DOC)}, Umidade = {formatar_br(umidade_valor)}%  
     - Resíduos totais: {formatar_br(residuos_kg_dia * 365 * anos_simulacao / 1000)} t  
     - **Aterro:** MCF = 1,0; captura = 60%; φ = 0,85  
-    - **Termofílica:** Yang et al. (2017)  
-    - **Leiras:** TOOL13 (0,002 t CH₄/t; 0,0005 t N₂O/t)
+    - **Termofílica (Yang et al., 2017)**  
+    - **Leiras (TOOL13)** – fatores: CH₄ = 0,002 t/t; N₂O = 0,0005 t/t
     """)
 
     st.subheader("💰 Valor Financeiro (Cenário Otimista)")
@@ -393,11 +392,11 @@ if st.session_state.get('run_simulation', False):
     cambio = st.session_state.taxa_cambio
     col1, col2 = st.columns(2)
     with col1:
-        st.metric("Termofílica - Evitado", f"{formatar_br(evitado_thermo)} tCO₂eq")
+        st.metric("Termofílica (Yang et al., 2017) - Evitado", f"{formatar_br(evitado_thermo)} tCO₂eq")
         st.metric("Valor (Euro)", f"{moeda} {formatar_br(evitado_thermo * preco)}")
         st.metric("Valor (R$)", f"R$ {formatar_br(evitado_thermo * preco * cambio)}")
     with col2:
-        st.metric("Leiras - Evitado", f"{formatar_br(evitado_windrow)} tCO₂eq")
+        st.metric("Leiras (TOOL13) - Evitado", f"{formatar_br(evitado_windrow)} tCO₂eq")
         st.metric("Valor (Euro)", f"{moeda} {formatar_br(evitado_windrow * preco)}")
         st.metric("Valor (R$)", f"R$ {formatar_br(evitado_windrow * preco * cambio)}")
 
@@ -405,14 +404,14 @@ if st.session_state.get('run_simulation', False):
     fig, ax = plt.subplots(figsize=(10, 6))
     x = np.arange(len(df_anual['Year']))
     width = 0.35
-    ax.bar(x - width/2, df_anual['Evitado_Thermo'], width, label='Termofílica', edgecolor='black', color='orange')
+    ax.bar(x - width/2, df_anual['Evitado_Thermo'], width, label='Termofílica (Yang et al., 2017)', edgecolor='black', color='orange')
     ax.bar(x + width/2, df_anual['Evitado_Wind'], width, label='Leiras (TOOL13)', edgecolor='black', color='green', hatch='//')
     for i, (v1, v2) in enumerate(zip(df_anual['Evitado_Thermo'], df_anual['Evitado_Wind'])):
         ax.text(i - width/2, v1 + max(v1,v2)*0.01, formatar_br(v1), ha='center', fontsize=9, fontweight='bold')
         ax.text(i + width/2, v2 + max(v1,v2)*0.01, formatar_br(v2), ha='center', fontsize=9, fontweight='bold')
     ax.set_xlabel('Ano')
     ax.set_ylabel('Emissões Evitadas (t CO₂eq)')
-    ax.set_title('Comparação Anual: Termofílica vs Leiras')
+    ax.set_title('Comparação Anual: Termofílica (Yang et al., 2017) vs Leiras (TOOL13)')
     ax.set_xticks(x)
     ax.set_xticklabels(df_anual['Year'], fontsize=8)
     ax.legend()
@@ -427,7 +426,7 @@ if st.session_state.get('run_simulation', False):
     wind_acum = np.cumsum(wind_series)
     fig2, ax2 = plt.subplots(figsize=(10,6))
     ax2.plot(datas, base_acum, 'r-', label='Baseline (Aterro)', linewidth=2)
-    ax2.plot(datas, thermo_acum, 'orange', label='Termofílica', linewidth=2)
+    ax2.plot(datas, thermo_acum, 'orange', label='Termofílica (Yang et al., 2017)', linewidth=2)
     ax2.plot(datas, wind_acum, 'green', label='Leiras (TOOL13)', linewidth=2)
     ax2.fill_between(datas, thermo_acum, wind_acum, color='gray', alpha=0.3, label='Diferença entre tecnologias')
     ax2.set_title(f'Redução de Emissões em {anos_simulacao} anos (k = {formatar_br(k_ano)} ano⁻¹)')
@@ -439,8 +438,8 @@ if st.session_state.get('run_simulation', False):
     st.pyplot(fig2)
     plt.close(fig2)
 
-    # -------------------- 2. TABELA COMPARATIVA DOS TRÊS GWPs --------------------
-    st.subheader("📊 Comparação entre Cenários de GWP")
+    # -------------------- 2. TABELA COMPARATIVA DOS TRÊS GWPs (com emissões evitadas) --------------------
+    st.subheader("📊 Comparação entre Cenários de GWP – Emissões Evitadas (tCO₂eq)")
     gwps = {
         "Otimista (GWP-20)": (79.7, 273),
         "Realista (GWP-100)": (27.0, 273),
@@ -454,8 +453,8 @@ if st.session_state.get('run_simulation', False):
         r = calc_temp.calculate_avoided_emissions(residuos_kg_dia, k_ano, T, DOC, umidade, anos_simulacao)
         comparacao.append({
             "Cenário": nome,
-            "Termofílica (tCO₂eq)": r['thermo_avoided'],
-            "Leiras (tCO₂eq)": r['wind_avoided']
+            "Termofílica (Yang et al., 2017)": r['thermo_avoided'],
+            "Leiras (TOOL13)": r['wind_avoided']
         })
     df_gwp = pd.DataFrame(comparacao)
     st.dataframe(df_gwp.style.format({c: lambda x: formatar_br(x) for c in df_gwp.columns if c != "Cenário"}))
@@ -473,16 +472,15 @@ if st.session_state.get('run_simulation', False):
         Si_w = analyze(problem, np.array(res_w), print_to_console=False)
     df_sens = pd.DataFrame({
         'Parâmetro': ['k','T','DOC'],
-        'S1_Termofílica': Si_t['S1'], 'ST_Termofílica': Si_t['ST'],
-        'S1_Leiras': Si_w['S1'], 'ST_Leiras': Si_w['ST']
+        'S1_Termofílica (Yang et al., 2017)': Si_t['S1'], 'ST_Termofílica (Yang et al., 2017)': Si_t['ST'],
+        'S1_Leiras (TOOL13)': Si_w['S1'], 'ST_Leiras (TOOL13)': Si_w['ST']
     })
     st.dataframe(df_sens.style.format({c:'{:.4f}' for c in df_sens.columns if c != 'Parâmetro'}))
 
-    # -------------------- 4. MONTE CARLO PARALELIZADO (mais rápido) --------------------
+    # -------------------- 4. MONTE CARLO --------------------
     st.subheader("🎲 Análise de Incerteza (Monte Carlo) e Comparação Estatística")
     with st.spinner("Executando simulações Monte Carlo (paralelizado)..."):
         u_mc, t_mc, d_mc = gerar_parametros_mc(n_simulations)
-        # Executa as simulações em paralelo (usa todos os núcleos)
         resultados = Parallel(n_jobs=-1)(
             delayed(run_montecarlo_single)(i, g20_ch4, g20_n2o, u_mc, t_mc, d_mc)
             for i in range(n_simulations)
@@ -500,10 +498,10 @@ if st.session_state.get('run_simulation', False):
     st.write(f"**Teste de Wilcoxon:** estatística = {w_stat:.5f}, p = {w_p:.5f}")
 
     stats_df = pd.DataFrame([
-        {"Tecnologia": "Termofílica", "Média": np.mean(arr_thermo_mc), "Mediana": np.median(arr_thermo_mc),
+        {"Tecnologia": "Termofílica (Yang et al., 2017)", "Média": np.mean(arr_thermo_mc), "Mediana": np.median(arr_thermo_mc),
          "Desvio Padrão": np.std(arr_thermo_mc), "IC 95% Inf": np.percentile(arr_thermo_mc,2.5),
          "IC 95% Sup": np.percentile(arr_thermo_mc,97.5)},
-        {"Tecnologia": "Leiras", "Média": np.mean(arr_wind_mc), "Mediana": np.median(arr_wind_mc),
+        {"Tecnologia": "Leiras (TOOL13)", "Média": np.mean(arr_wind_mc), "Mediana": np.median(arr_wind_mc),
          "Desvio Padrão": np.std(arr_wind_mc), "IC 95% Inf": np.percentile(arr_wind_mc,2.5),
          "IC 95% Sup": np.percentile(arr_wind_mc,97.5)}
     ])
@@ -511,7 +509,7 @@ if st.session_state.get('run_simulation', False):
 
     # Distribuição das emissões evitadas
     fig3, ax3 = plt.subplots(figsize=(10,6))
-    sns.kdeplot(arr_thermo_mc, label="Termofílica", linewidth=2, ax=ax3)
+    sns.kdeplot(arr_thermo_mc, label="Termofílica (Yang et al., 2017)", linewidth=2, ax=ax3)
     sns.kdeplot(arr_wind_mc, label="Leiras (TOOL13)", linewidth=2, ax=ax3)
     ax3.set_title("Distribuição das Emissões Evitadas (Monte Carlo)")
     ax3.set_xlabel("tCO₂eq")
@@ -525,7 +523,7 @@ if st.session_state.get('run_simulation', False):
     # Tabela anual detalhada
     st.subheader("📋 Resultados Anuais (Cenário Otimista)")
     df_anual_fmt = df_anual[['Year', 'base', 'thermo', 'wind', 'Evitado_Thermo', 'Evitado_Wind']].copy()
-    df_anual_fmt.columns = ['Year', 'Baseline (tCO₂eq)', 'Termofílica (tCO₂eq)', 'Leiras (tCO₂eq)', 'Redução Termofílica', 'Redução Leiras']
+    df_anual_fmt.columns = ['Year', 'Baseline (tCO₂eq)', 'Termofílica (Yang et al., 2017) (tCO₂eq)', 'Leiras (TOOL13) (tCO₂eq)', 'Redução Termofílica (Yang et al., 2017)', 'Redução Leiras (TOOL13)']
     for col in df_anual_fmt.columns:
         if col != 'Year':
             df_anual_fmt[col] = df_anual_fmt[col].apply(formatar_br)
@@ -542,7 +540,8 @@ st.markdown("""
 - **AMS‑III.F (v12.0)** – *Avoidance of methane emissions through composting* (UNFCCC, 2016)  
 - **TOOL13 (v02.0)** – *Project and leakage emissions from composting* (UNFCCC, 2017)  
 - **A6.4‑AMT‑003 (v01.0)** – *Emissions from solid waste disposal sites* (UNFCCC, 2024)  
-- **Yang et al. (2017)** – *Waste Management*, 66, 44-51 (DOI: 10.1016/j.wasman.2017.04.033)  
+- **Termofílica (Yang et al., 2017):** *Waste Management*, 66, 44-51 (DOI: 10.1016/j.wasman.2017.04.033) – CH₄=0,0060 t/tC; N₂O=0,0196 t/tN  
+- **Leiras (TOOL13):** Fatores padrão – CH₄=0,002 t/t úmido; N₂O=0,0005 t/t úmido  
 - **GWP-20** – Forster et al. (2021) IPCC AR6  
 - **Aterro CGR Guatapará (Ribeirão Preto):** usina de biogás com captura estimada de 60% do metano gerado.
 """)

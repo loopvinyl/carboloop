@@ -1,4 +1,5 @@
-# IMPORTAÇÕES E CONFIGURAÇÕES INICIAIS (mesmo do script anterior)
+# IMPORTAÇÕES E CONFIGURAÇÕES INICIAIS
+
 import requests
 import streamlit as st
 import numpy as np
@@ -14,47 +15,68 @@ from SALib.sample.sobol import sample
 from SALib.analyze.sobol import analyze
 import yfinance as yf
 
-# Semente fixa e configurações da página
+# Semente fixa para reprodutibilidade
 np.random.seed(50)
+
 st.set_page_config(
-    page_title="Comparação de Tecnologias de Compostagem para Créditos de Carbono",
+    page_title="Simulador de Créditos de Carbono - Comparação entre Vermicompostagem, Termofílica e Leiras",
     layout="wide"
 )
+
 warnings.filterwarnings("ignore", category=FutureWarning)
 pd.set_option('display.max_columns', None)
+pd.set_option('display.width', None)
+np.seterr(divide='ignore', invalid='ignore')
+
 plt.rcParams['figure.dpi'] = 150
 plt.rcParams['font.size'] = 10
 sns.set_style("whitegrid")
 
 # =============================================================================
-# PARÂMETROS (mesmos do script anterior)
+# PARÂMETROS ESPECÍFICOS PARA O PROJETO EM RIBEIRÃO PRETO
 # =============================================================================
-CAPTURE_FRACTION_BASELINE = 0.6
+CAPTURE_FRACTION_BASELINE = 0.6   # 60% captura no aterro CGR Guatapará
 MCF_BASELINE = 1.0
 OX_BASELINE = 0.1
 PHI_BASELINE = 0.85
 
+# Fatores para vermicompostagem (Yang et al. 2017) – mesmos do script original
 TOC = 0.436
 TN = 0.0142
+F_CH4_VERMI = 0.0013      # fração de CH₄ na vermicompostagem
+F_N2O_VERMI = 0.0092      # fração de N₂O na vermicompostagem
+
+# Fatores para compostagem termofílica (Yang et al. 2017)
 F_CH4_THERMO = 0.0060
 F_N2O_THERMO = 0.0196
 
+# Fatores para compostagem em leiras (TOOL13, v02.0)
 EF_CH4_WINDROW = 0.002
 EF_N2O_WINDROW = 0.0005
 
-# Classe GHGEmissionCalculator (exatamente igual à última versão funcional)
+# CLASSE DE CÁLCULO (com vermicompostagem adicionada)
 class GHGEmissionCalculator:
     def __init__(self):
+        # Baseline
         self.MCF = MCF_BASELINE
         self.F = 0.5
         self.OX = OX_BASELINE
         self.Ri = 0.0
+
+        # Vermicompostagem
         self.TOC = TOC
         self.TN = TN
+        self.f_CH4_vermi = F_CH4_VERMI
+        self.f_N2O_vermi = F_N2O_VERMI
+
+        # Termofílica
         self.f_CH4_thermo = F_CH4_THERMO
         self.f_N2O_thermo = F_N2O_THERMO
+
+        # Leiras (TOOL13)
         self.EF_CH4_windrow = EF_CH4_WINDROW
         self.EF_N2O_windrow = EF_N2O_WINDROW
+
         self.COMPOSTING_DAYS = 50
         self.GWP_CH4_20 = 79.7
         self.GWP_N2O_20 = 273
@@ -96,12 +118,14 @@ class GHGEmissionCalculator:
         kernel = np.exp(-k*(t-1)/365.0) - np.exp(-k*t/365.0)
         ch4 = np.convolve(np.ones(days), kernel, mode='full')[:days] * ch4_pot_kg
         ch4 = ch4 * phi * (1 - capt)
+
         opening_factor = min(1.0, (100/w_kg_day)*(8/24))
         E_avg = opening_factor*1.91 + (1-opening_factor)*2.15
         moisture_factor = (1-umid)/(1-0.55)
         daily_n2o_kg = (E_avg * moisture_factor * (44/28) / 1_000_000) * w_kg_day
         kernel_n2o = np.array([self.profile_n2o_landfill.get(d,0) for d in range(1,6)])
         n2o = np.convolve(np.full(days, daily_n2o_kg), kernel_n2o, mode='full')[:days]
+
         ch4_pre, n2o_pre = self._pre_disposal(w_kg_day, days)
         return ch4 + ch4_pre, n2o + n2o_pre
 
@@ -113,6 +137,21 @@ class GHGEmissionCalculator:
                 idx = e + dd - 1
                 if idx < days:
                     n2o[idx] += w_kg_day * self.N2O_pre_kg_per_kg_total * frac
+        return ch4, n2o
+
+    def calculate_vermicomposting_emissions(self, w_kg_day, umid, years=20):
+        days = years*365
+        dry = 1 - umid
+        ch4_batch = w_kg_day * self.TOC * self.f_CH4_vermi * (16/12) * dry
+        n2o_batch = w_kg_day * self.TN * self.f_N2O_vermi * (44/28) * dry
+        ch4 = np.zeros(days)
+        n2o = np.zeros(days)
+        for e in range(days):
+            for d in range(self.COMPOSTING_DAYS):
+                ed = e + d
+                if ed < days:
+                    ch4[ed] += ch4_batch * self.profile_ch4[d]
+                    n2o[ed] += n2o_batch * self.profile_n2o[d]
         return ch4, n2o
 
     def calculate_thermophilic_emissions(self, w_kg_day, umid, years=20):
@@ -151,21 +190,26 @@ class GHGEmissionCalculator:
 
     def calculate_avoided_emissions(self, w_kg_day, k, temp, doc, umid, years):
         ch4_l, n2o_l = self.calculate_landfill_emissions(w_kg_day, k, temp, doc, umid, years)
+        ch4_v, n2o_v = self.calculate_vermicomposting_emissions(w_kg_day, umid, years)
         ch4_t, n2o_t = self.calculate_thermophilic_emissions(w_kg_day, umid, years)
         ch4_w, n2o_w = self.calculate_windrow_emissions(w_kg_day, umid, years)
+
         base = (ch4_l*self.GWP_CH4_20 + n2o_l*self.GWP_N2O_20)/1000
+        vermi = (ch4_v*self.GWP_CH4_20 + n2o_v*self.GWP_N2O_20)/1000
         thermo = (ch4_t*self.GWP_CH4_20 + n2o_t*self.GWP_N2O_20)/1000
         wind = (ch4_w*self.GWP_CH4_20 + n2o_w*self.GWP_N2O_20)/1000
+
         return {
             'baseline': base.sum(),
+            'vermi_avoided': base.sum() - vermi.sum(),
             'thermo_avoided': base.sum() - thermo.sum(),
             'wind_avoided': base.sum() - wind.sum(),
-            'base_series': base, 'thermo_series': thermo, 'wind_series': wind
+            'base_series': base, 'vermi_series': vermi, 'thermo_series': thermo, 'wind_series': wind
         }
 
 
 # =============================================================================
-# FUNÇÕES DE COTAÇÃO, FORMATAÇÃO E INTERFACE (mantidas iguais)
+# FUNÇÕES DE COTAÇÃO, FORMATAÇÃO E INTERFACE (idênticas ao script anterior)
 # =============================================================================
 def obter_cotacao_carbono():
     try:
@@ -284,13 +328,14 @@ def inicializar_session_state():
 inicializar_session_state()
 
 # INTERFACE PRINCIPAL
-st.title("Comparação de Tecnologias de Compostagem para Créditos de Carbono")
+st.title("Comparação de Tecnologias de Tratamento de Resíduos para Créditos de Carbono")
 st.markdown("""
-Esta ferramenta compara **duas tecnologias de compostagem** (termofílica e em leiras) com o **cenário baseline (aterro sanitário)** calibrado para Ribeirão Preto (aterro CGR Guatapará com captura de biogás).  
-**Estatísticas de diferença significativa** entre as emissões evitadas são calculadas via Monte Carlo.
+Esta ferramenta compara **três tecnologias** (vermicompostagem, compostagem termofílica e compostagem em leiras) com o **cenário baseline (aterro sanitário)** calibrado para Ribeirão Preto (aterro CGR Guatapará com captura de biogás).  
+São calculadas as emissões evitadas, análises de sensibilidade (Sobol), incerteza (Monte Carlo) e **diferenças significativas** entre as tecnologias.
 
 **Metodologias:**  
 - **Baseline:** A6.4‑AMT‑003 (MCF=1,0; captura=60%; φ=0,85)  
+- **Vermicompostagem:** Yang et al. (2017) – CH₄=0,0013 t/tC; N₂O=0,0092 t/tN  
 - **Termofílica:** Yang et al. (2017) – CH₄=0,0060 t/tC; N₂O=0,0196 t/tN  
 - **Leiras:** TOOL13 (2017) – CH₄=0,002 t/t úmido; N₂O=0,0005 t/t úmido
 """)
@@ -314,8 +359,17 @@ with st.sidebar:
         st.session_state.run_simulation = True
 
 # =============================================================================
-# FUNÇÕES PARA SOBOL E MONTE CARLO (serão chamadas após os resultados rápidos)
+# FUNÇÕES PARA SOBOL (três tecnologias) E MONTE CARLO
 # =============================================================================
+def sobol_vermi(params, gwp_ch4, gwp_n2o):
+    k, temp, doc = params
+    np.random.seed(50)
+    calc = GHGEmissionCalculator()
+    calc.GWP_CH4_20 = gwp_ch4
+    calc.GWP_N2O_20 = gwp_n2o
+    res = calc.calculate_avoided_emissions(residuos_kg_dia, k, temp, doc, umidade, anos_simulacao)
+    return res['vermi_avoided']
+
 def sobol_thermo(params, gwp_ch4, gwp_n2o):
     k, temp, doc = params
     np.random.seed(50)
@@ -341,7 +395,6 @@ def gerar_parametros_mc(n):
     d = np.random.triangular(0.12, 0.15, 0.18, n)
     return u, t, d
 
-
 # =============================================================================
 # EXECUÇÃO PRINCIPAL (com ordem de exibição progressiva)
 # =============================================================================
@@ -350,18 +403,19 @@ if st.session_state.get('run_simulation', False):
     # -------------------- 1. RESULTADOS DETERMINÍSTICOS (rápidos) --------------------
     with st.spinner("Calculando resultados determinísticos..."):
         calc = GHGEmissionCalculator()
-        # Usar GWP-20 para os gráficos principais
         calc.GWP_CH4_20, calc.GWP_N2O_20 = (79.7, 273)
         res_det = calc.calculate_avoided_emissions(residuos_kg_dia, k_ano, T, DOC, umidade, anos_simulacao)
+        evitado_vermi = res_det['vermi_avoided']
         evitado_thermo = res_det['thermo_avoided']
         evitado_windrow = res_det['wind_avoided']
 
-        # Séries diárias para gráficos
+        # Séries diárias para gráficos (apenas baseline, termo e leiras – para manter os gráficos originais)
         base_series = res_det['base_series']
         thermo_series = res_det['thermo_series']
         wind_series = res_det['wind_series']
+        vermi_series = res_det['vermi_series']
 
-        # Cálculo anual para gráfico de barras
+        # Cálculo anual para gráfico de barras (comparação termo vs leiras, como antes)
         dias_total = len(base_series)
         datas = pd.date_range(start=datetime.now(), periods=dias_total, freq='D')
         df_dia = pd.DataFrame({'Data': datas, 'base': base_series, 'thermo': thermo_series, 'wind': wind_series})
@@ -370,32 +424,37 @@ if st.session_state.get('run_simulation', False):
         df_anual['Evitado_Thermo'] = df_anual['base'] - df_anual['thermo']
         df_anual['Evitado_Wind'] = df_anual['base'] - df_anual['wind']
 
-    # Exibição imediata dos resultados rápidos
+    # Exibição imediata
     st.header("📈 Resultados da Simulação (GWP-20)")
     st.info(f"""
     **Parâmetros calibrados para Ribeirão Preto:**  
     - k = {formatar_br(k_ano)} ano⁻¹, T = {formatar_br(T)} °C, DOC = {formatar_br(DOC)}, Umidade = {formatar_br(umidade_valor)}%  
     - Resíduos totais: {formatar_br(residuos_kg_dia * 365 * anos_simulacao / 1000)} t  
     - **Aterro:** MCF = 1,0; captura = 60%; φ = 0,85  
-    - **Termofílica:** Yang et al. (2017)  
-    - **Leiras:** TOOL13 (0,002 t CH₄/t; 0,0005 t N₂O/t)
+    - **Vermicompostagem:** Yang et al. (2017) – CH₄=0,0013; N₂O=0,0092  
+    - **Termofílica:** Yang et al. (2017) – CH₄=0,0060; N₂O=0,0196  
+    - **Leiras:** TOOL13 – CH₄=0,002 t/t; N₂O=0,0005 t/t
     """)
 
     st.subheader("💰 Valor Financeiro (Cenário Otimista)")
     preco = st.session_state.preco_carbono
     moeda = st.session_state.moeda_carbono
     cambio = st.session_state.taxa_cambio
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
     with col1:
+        st.metric("Vermicompostagem - Evitado", f"{formatar_br(evitado_vermi)} tCO₂eq")
+        st.metric("Valor (Euro)", f"{moeda} {formatar_br(evitado_vermi * preco)}")
+        st.metric("Valor (R$)", f"R$ {formatar_br(evitado_vermi * preco * cambio)}")
+    with col2:
         st.metric("Termofílica - Evitado", f"{formatar_br(evitado_thermo)} tCO₂eq")
         st.metric("Valor (Euro)", f"{moeda} {formatar_br(evitado_thermo * preco)}")
         st.metric("Valor (R$)", f"R$ {formatar_br(evitado_thermo * preco * cambio)}")
-    with col2:
+    with col3:
         st.metric("Leiras - Evitado", f"{formatar_br(evitado_windrow)} tCO₂eq")
         st.metric("Valor (Euro)", f"{moeda} {formatar_br(evitado_windrow * preco)}")
         st.metric("Valor (R$)", f"R$ {formatar_br(evitado_windrow * preco * cambio)}")
 
-    st.subheader("📊 Comparação Anual das Emissões Evitadas")
+    st.subheader("📊 Comparação Anual (Termofílica vs Leiras)")
     fig, ax = plt.subplots(figsize=(10, 6))
     x = np.arange(len(df_anual['Year']))
     width = 0.35
@@ -415,7 +474,7 @@ if st.session_state.get('run_simulation', False):
     st.pyplot(fig)
     plt.close(fig)
 
-    st.subheader("📉 Redução de Emissões Acumulada")
+    st.subheader("📉 Redução de Emissões Acumulada (Termofílica vs Leiras)")
     base_acum = np.cumsum(base_series)
     thermo_acum = np.cumsum(thermo_series)
     wind_acum = np.cumsum(wind_series)
@@ -433,8 +492,8 @@ if st.session_state.get('run_simulation', False):
     st.pyplot(fig2)
     plt.close(fig2)
 
-    # -------------------- 2. TABELA COMPARATIVA DOS TRÊS GWPs (rápido) --------------------
-    st.subheader("📊 Comparação entre Cenários de GWP")
+    # -------------------- 2. TABELA COMPARATIVA DOS TRÊS GWPs (com vermicompostagem) --------------------
+    st.subheader("📊 Comparação entre Cenários de GWP (todas as tecnologias)")
     gwps = {
         "Otimista (GWP-20)": (79.7, 273),
         "Realista (GWP-100)": (27.0, 273),
@@ -448,70 +507,110 @@ if st.session_state.get('run_simulation', False):
         r = calc_temp.calculate_avoided_emissions(residuos_kg_dia, k_ano, T, DOC, umidade, anos_simulacao)
         comparacao.append({
             "Cenário": nome,
+            "Vermicompostagem (tCO₂eq)": r['vermi_avoided'],
             "Termofílica (tCO₂eq)": r['thermo_avoided'],
             "Leiras (tCO₂eq)": r['wind_avoided']
         })
     df_gwp = pd.DataFrame(comparacao)
     st.dataframe(df_gwp.style.format({c: lambda x: formatar_br(x) for c in df_gwp.columns if c != "Cenário"}))
 
-    # -------------------- 3. ANÁLISE SOBOL (mais pesada) --------------------
+    # -------------------- 3. ANÁLISE SOBOL (para as três tecnologias) --------------------
     st.subheader("🎯 Análise de Sensibilidade Global (Sobol) - GWP-20")
     problem = {'num_vars':3, 'names':['k','T','DOC'], 'bounds':[[0.06,0.40],[20,40],[0.10,0.25]]}
     param_values = sample(problem, n_samples, seed=50)
     g20_ch4, g20_n2o = gwps["Otimista (GWP-20)"]
+
+    with st.spinner("Executando Sobol para vermicompostagem..."):
+        res_v = Parallel(n_jobs=1)(delayed(sobol_vermi)(p, g20_ch4, g20_n2o) for p in param_values)
+        Si_v = analyze(problem, np.array(res_v), print_to_console=False)
     with st.spinner("Executando Sobol para termofílica..."):
         res_t = Parallel(n_jobs=1)(delayed(sobol_thermo)(p, g20_ch4, g20_n2o) for p in param_values)
         Si_t = analyze(problem, np.array(res_t), print_to_console=False)
     with st.spinner("Executando Sobol para leiras..."):
         res_w = Parallel(n_jobs=1)(delayed(sobol_windrow)(p, g20_ch4, g20_n2o) for p in param_values)
         Si_w = analyze(problem, np.array(res_w), print_to_console=False)
+
     df_sens = pd.DataFrame({
         'Parâmetro': ['k','T','DOC'],
+        'S1_Vermi': Si_v['S1'], 'ST_Vermi': Si_v['ST'],
         'S1_Termofílica': Si_t['S1'], 'ST_Termofílica': Si_t['ST'],
         'S1_Leiras': Si_w['S1'], 'ST_Leiras': Si_w['ST']
     })
     st.dataframe(df_sens.style.format({c:'{:.4f}' for c in df_sens.columns if c != 'Parâmetro'}))
 
-    # -------------------- 4. MONTE CARLO E ESTATÍSTICAS (mais pesado) --------------------
-    st.subheader("🎲 Análise de Incerteza (Monte Carlo) e Comparação Estatística")
+    # -------------------- 4. MONTE CARLO E ESTATÍSTICAS DE DIFERENÇA (todos os pares) --------------------
+    st.subheader("🎲 Análise de Incerteza (Monte Carlo) e Comparação Estatística entre Tecnologias")
     with st.spinner("Executando simulações Monte Carlo..."):
         u_mc, t_mc, d_mc = gerar_parametros_mc(n_simulations)
-        arr_thermo_mc = []
-        arr_wind_mc = []
+        arr_vermi = []
+        arr_thermo = []
+        arr_wind = []
         for i in range(n_simulations):
             calc_mc = GHGEmissionCalculator()
             calc_mc.GWP_CH4_20, calc_mc.GWP_N2O_20 = g20_ch4, g20_n2o
             r_mc = calc_mc.calculate_avoided_emissions(
                 residuos_kg_dia, k_ano, t_mc[i], d_mc[i], u_mc[i], anos_simulacao
             )
-            arr_thermo_mc.append(r_mc['thermo_avoided'])
-            arr_wind_mc.append(r_mc['wind_avoided'])
-        arr_thermo_mc = np.array(arr_thermo_mc)
-        arr_wind_mc = np.array(arr_wind_mc)
-        diff = arr_thermo_mc - arr_wind_mc
+            arr_vermi.append(r_mc['vermi_avoided'])
+            arr_thermo.append(r_mc['thermo_avoided'])
+            arr_wind.append(r_mc['wind_avoided'])
+        arr_vermi = np.array(arr_vermi)
+        arr_thermo = np.array(arr_thermo)
+        arr_wind = np.array(arr_wind)
 
-        shapiro_stat, shapiro_p = stats.shapiro(diff)
-        t_stat, t_p = stats.ttest_rel(arr_thermo_mc, arr_wind_mc)
-        w_stat, w_p = stats.wilcoxon(arr_thermo_mc, arr_wind_mc)
+        # Diferenças entre pares
+        diff_vt = arr_vermi - arr_thermo
+        diff_vw = arr_vermi - arr_wind
+        diff_tw = arr_thermo - arr_wind
 
-    st.write(f"**Teste de normalidade (Shapiro-Wilk) da diferença:** estatística = {shapiro_stat:.5f}, p = {shapiro_p:.5f}")
-    st.write(f"**Teste t pareado:** t = {t_stat:.5f}, p = {t_p:.5f}")
-    st.write(f"**Teste de Wilcoxon:** estatística = {w_stat:.5f}, p = {w_p:.5f}")
+        # Testes
+        shapiro_vt, p_vt = stats.shapiro(diff_vt)
+        shapiro_vw, p_vw = stats.shapiro(diff_vw)
+        shapiro_tw, p_tw = stats.shapiro(diff_tw)
 
+        t_vt, p_t_vt = stats.ttest_rel(arr_vermi, arr_thermo)
+        t_vw, p_t_vw = stats.ttest_rel(arr_vermi, arr_wind)
+        t_tw, p_t_tw = stats.ttest_rel(arr_thermo, arr_wind)
+
+        wilcox_vt, p_w_vt = stats.wilcoxon(arr_vermi, arr_thermo)
+        wilcox_vw, p_w_vw = stats.wilcoxon(arr_vermi, arr_wind)
+        wilcox_tw, p_w_tw = stats.wilcoxon(arr_thermo, arr_wind)
+
+    st.write("**Testes de normalidade (Shapiro-Wilk) das diferenças:**")
+    st.write(f"- Vermi vs Termo: estatística = {shapiro_vt:.5f}, p = {p_vt:.5f}")
+    st.write(f"- Vermi vs Leiras: estatística = {shapiro_vw:.5f}, p = {p_vw:.5f}")
+    st.write(f"- Termo vs Leiras: estatística = {shapiro_tw:.5f}, p = {p_tw:.5f}")
+
+    st.write("**Testes t pareados:**")
+    st.write(f"- Vermi vs Termo: t = {t_vt:.5f}, p = {p_t_vt:.5f}")
+    st.write(f"- Vermi vs Leiras: t = {t_vw:.5f}, p = {p_t_vw:.5f}")
+    st.write(f"- Termo vs Leiras: t = {t_tw:.5f}, p = {p_t_tw:.5f}")
+
+    st.write("**Testes de Wilcoxon:**")
+    st.write(f"- Vermi vs Termo: estatística = {wilcox_vt:.5f}, p = {p_w_vt:.5f}")
+    st.write(f"- Vermi vs Leiras: estatística = {wilcox_vw:.5f}, p = {p_w_vw:.5f}")
+    st.write(f"- Termo vs Leiras: estatística = {wilcox_tw:.5f}, p = {p_w_tw:.5f}")
+
+    # Estatísticas descritivas
     stats_df = pd.DataFrame([
-        {"Tecnologia": "Termofílica", "Média": np.mean(arr_thermo_mc), "Mediana": np.median(arr_thermo_mc),
-         "Desvio Padrão": np.std(arr_thermo_mc), "IC 95% Inf": np.percentile(arr_thermo_mc,2.5),
-         "IC 95% Sup": np.percentile(arr_thermo_mc,97.5)},
-        {"Tecnologia": "Leiras", "Média": np.mean(arr_wind_mc), "Mediana": np.median(arr_wind_mc),
-         "Desvio Padrão": np.std(arr_wind_mc), "IC 95% Inf": np.percentile(arr_wind_mc,2.5),
-         "IC 95% Sup": np.percentile(arr_wind_mc,97.5)}
+        {"Tecnologia": "Vermicompostagem", "Média": np.mean(arr_vermi), "Mediana": np.median(arr_vermi),
+         "Desvio Padrão": np.std(arr_vermi), "IC 95% Inf": np.percentile(arr_vermi,2.5),
+         "IC 95% Sup": np.percentile(arr_vermi,97.5)},
+        {"Tecnologia": "Termofílica", "Média": np.mean(arr_thermo), "Mediana": np.median(arr_thermo),
+         "Desvio Padrão": np.std(arr_thermo), "IC 95% Inf": np.percentile(arr_thermo,2.5),
+         "IC 95% Sup": np.percentile(arr_thermo,97.5)},
+        {"Tecnologia": "Leiras", "Média": np.mean(arr_wind), "Mediana": np.median(arr_wind),
+         "Desvio Padrão": np.std(arr_wind), "IC 95% Inf": np.percentile(arr_wind,2.5),
+         "IC 95% Sup": np.percentile(arr_wind,97.5)}
     ])
+    st.subheader("📊 Estatísticas Descritivas (Monte Carlo)")
     st.dataframe(stats_df.style.format({c: lambda x: formatar_br(x) for c in stats_df.columns if c != "Tecnologia"}))
 
-    # Distribuição das emissões evitadas (gráfico KDE)
+    # Gráfico de distribuições (KDE) das três tecnologias
     fig3, ax3 = plt.subplots(figsize=(10,6))
-    sns.kdeplot(arr_thermo_mc, label="Termofílica", linewidth=2, ax=ax3)
-    sns.kdeplot(arr_wind_mc, label="Leiras (TOOL13)", linewidth=2, ax=ax3)
+    sns.kdeplot(arr_vermi, label="Vermicompostagem", linewidth=2, ax=ax3)
+    sns.kdeplot(arr_thermo, label="Termofílica", linewidth=2, ax=ax3)
+    sns.kdeplot(arr_wind, label="Leiras (TOOL13)", linewidth=2, ax=ax3)
     ax3.set_title("Distribuição das Emissões Evitadas (Monte Carlo)")
     ax3.set_xlabel("tCO₂eq")
     ax3.set_ylabel("Densidade")
@@ -521,14 +620,24 @@ if st.session_state.get('run_simulation', False):
     st.pyplot(fig3)
     plt.close(fig3)
 
-    # Tabela anual detalhada (já calculada)
+    # -------------------- 5. TABELA ANUAL (com redução da vermicompostagem) --------------------
     st.subheader("📋 Resultados Anuais (Cenário Otimista)")
-    df_anual_fmt = df_anual[['Year', 'base', 'thermo', 'wind', 'Evitado_Thermo', 'Evitado_Wind']].copy()
-    df_anual_fmt.columns = ['Year', 'Baseline (tCO₂eq)', 'Termofílica (tCO₂eq)', 'Leiras (tCO₂eq)', 'Redução Termofílica', 'Redução Leiras']
-    for col in df_anual_fmt.columns:
+    # Calcular redução anual da vermicompostagem
+    vermi_anual = df_dia.groupby('Year')['vermi_series'].sum() if 'vermi_series' in df_dia else pd.Series()
+    # Se ainda não temos vermi_series no df_dia, recalcular rapidamente
+    if 'vermi_series' not in df_dia.columns:
+        df_dia_verm = pd.DataFrame({'Data': datas, 'base': base_series, 'vermi': vermi_series})
+        df_dia_verm['Year'] = df_dia_verm['Data'].dt.year
+        vermi_anual = df_dia_verm.groupby('Year')['vermi'].sum()
+    df_anual_completo = df_anual.copy()
+    df_anual_completo['Evitado_Vermi'] = df_anual_completo['base'] - vermi_anual.values
+    df_anual_completo = df_anual_completo[['Year', 'base', 'vermi_anual', 'thermo', 'wind', 'Evitado_Vermi', 'Evitado_Thermo', 'Evitado_Wind']]
+    df_anual_completo.columns = ['Year', 'Baseline (tCO₂eq)', 'Vermi (tCO₂eq)', 'Termofílica (tCO₂eq)', 'Leiras (tCO₂eq)',
+                                 'Redução Vermi', 'Redução Termofílica', 'Redução Leiras']
+    for col in df_anual_completo.columns:
         if col != 'Year':
-            df_anual_fmt[col] = df_anual_fmt[col].apply(formatar_br)
-    st.dataframe(df_anual_fmt)
+            df_anual_completo[col] = df_anual_completo[col].apply(formatar_br)
+    st.dataframe(df_anual_completo)
 
     st.session_state.run_simulation = False
 
@@ -541,7 +650,7 @@ st.markdown("""
 - **AMS‑III.F (v12.0)** – *Avoidance of methane emissions through composting* (UNFCCC, 2016)  
 - **TOOL13 (v02.0)** – *Project and leakage emissions from composting* (UNFCCC, 2017)  
 - **A6.4‑AMT‑003 (v01.0)** – *Emissions from solid waste disposal sites* (UNFCCC, 2024)  
-- **Yang et al. (2017)** – *Waste Management*, 66, 44-51 (DOI: 10.1016/j.wasman.2017.04.033)  
+- **Yang et al. (2017)** – *Waste Management*, 66, 44-51 (DOI: 10.1016/j.wasman.2017.04.033) – fatores de emissão para vermicompostagem e termofílica  
 - **GWP-20** – Forster et al. (2021) IPCC AR6  
 - **Aterro CGR Guatapará (Ribeirão Preto):** usina de biogás com captura estimada de 60% do metano gerado.
 """)

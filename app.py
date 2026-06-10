@@ -259,7 +259,7 @@ def calcular_valor_creditos(e, preco, moeda, taxa=1):
     return e * preco * taxa
 
 def formatar_br(num):
-    if pd.isna(num):
+    if pd.isna(num) or not np.isfinite(num):
         return "N/A"
     num = round(num, 2)
     return f"{num:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
@@ -337,7 +337,8 @@ with st.container():
     st.markdown("""
     **📘 Nota metodológica:**  
     A metodologia **AMS‑III.F** e sua ferramenta **TOOL13** (UNFCCC, 2016) fornecem fatores de emissão padrão para qualquer projeto de compostagem:  
-    **CH₄ = 0,002 t/t resíduo úmido** e **N₂O = 0,0005 t/t resíduo úmido**. Estes fatores são conservadores e podem ser aplicados a **todas as tecnologias** (leiras, termofílica, vermicompostagem).  
+    **CH₄ = 0,002 t/t resíduo úmido** e **N₂O = 0,0005 t/t resíduo úmido**.  
+    Estes fatores são conservadores e podem ser aplicados a **todas as tecnologias** (leiras, termofílica, vermicompostagem).  
 
     Neste simulador, para fins de comparação científica, utilizamos:  
     - **Fatores padrão UNFCCC** → aplicados a um cenário de compostagem em leiras aeradas.  
@@ -486,9 +487,15 @@ if st.session_state.get('run_simulation', False):
             st.metric("Euro", f"{moeda} {formatar_br(v_std*preco)}")
             st.metric("R$", f"R$ {formatar_br(v_std*preco*cambio)}")
         
+        # Cálculo seguro das razões
+        razao_vt = v_vermi / v_termo if v_termo != 0 else np.inf
+        razao_vs = v_vermi / v_std if v_std != 0 else np.inf
+        razao_vt_str = formatar_br(razao_vt) if np.isfinite(razao_vt) else "infinito"
+        razao_vs_str = formatar_br(razao_vs) if np.isfinite(razao_vs) else "infinito"
+        
         st.success(f"""
         **💡 Análise financeira:**  
-        - A **vermocompostagem** gera aproximadamente **{formatar_br(v_vermi/v_termo):.1f}x** mais receita que a termofílica e **{formatar_br(v_vermi/v_std):.1f}x** mais que os fatores padrão.  
+        - A **vermocompostagem** gera aproximadamente **{razao_vt_str}x** mais receita que a termofílica e **{razao_vs_str}x** mais que os fatores padrão.  
         - Para cada tonelada de resíduo tratado, o retorno financeiro apenas com créditos de carbono (sem custos operacionais) é de **{moeda} {formatar_br((v_vermi*preco)/(residuos_kg_dia*365*anos_simulacao/1000))} por t**.
         """)
 
@@ -590,10 +597,11 @@ if st.session_state.get('run_simulation', False):
         ])
         st.dataframe(stats_df.style.format({c: lambda x: formatar_br(x) for c in stats_df.columns if c != 'Tecnologia'}))
 
+        cv = (np.std(arr_v)/np.mean(arr_v)*100) if np.mean(arr_v) != 0 else 0
         st.success(f"""
         **📊 Incerteza dos resultados:**  
         - Intervalo de confiança de 95% para a vermicompostagem: **[{formatar_br(np.percentile(arr_v,2.5))}, {formatar_br(np.percentile(arr_v,97.5))}] tCO₂eq**.  
-        - Coeficiente de variação (DP/média): **{(np.std(arr_v)/np.mean(arr_v)*100):.1f}%** (incerteza moderada).  
+        - Coeficiente de variação (DP/média): **{cv:.1f}%** (incerteza moderada).  
         - A distribuição é aproximadamente normal (verifique o teste de Shapiro‑Wilk abaixo).
         """)
 

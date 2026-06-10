@@ -331,7 +331,7 @@ inicializar_session_state()
 # INTERFACE PRINCIPAL
 # =============================================================================
 st.title("Simulador de Emissões de GEE e Créditos de Carbono")
-st.caption("Comparação: Vermicompostagem (Yang et al. 2017) vs Compostagem Termofílica (Yang et al. 2017) vs Fatores Padrão UNFCCC (AMS‑III.F / TOOL13) – Baseline Aterro Guatapará (Ribeirão Preto)")
+st.caption("Comparação: Vermicompostagem (Yang et al. 2017) vs Compostagem Termofílica (Yang et al. 2017) vs Fatores Padrão UNFCCC (AMS‑III.F / TOOL13). Baseline Aterro Guatapará (Ribeirão Preto)")
 
 st.markdown("""
 **📘 Nota metodológica:**  

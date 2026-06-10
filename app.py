@@ -20,7 +20,7 @@ np.random.seed(50)
 
 # Configuração da página Streamlit
 st.set_page_config(
-    page_title="Comparação de Tecnologias de Compostagem (Yang et al. 2017 vs TOOL13/AMS‑III.F) com Baseline Aterro (Ribeirão Preto)",
+    page_title="Simulador de Emissões de GEE e Créditos de Carbono: Yang et al. 2017 vs TOOL13/AMS‑III.F com Baseline Aterro (Ribeirão Preto)",
     layout="wide"
 )
 

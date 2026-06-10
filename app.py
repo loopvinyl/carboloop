@@ -25,59 +25,6 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# CSS customizado para melhor responsividade e estética
-st.markdown("""
-<style>
-    /* Ajustes globais */
-    .main {
-        padding: 0rem 1rem;
-    }
-    .stMarkdown {
-        text-align: justify;
-    }
-    /* Melhorar legibilidade em telas pequenas */
-    @media (max-width: 768px) {
-        h1 {
-            font-size: 1.8rem !important;
-        }
-        .stMetric {
-            font-size: 0.9rem !important;
-        }
-        .stDataFrame {
-            font-size: 0.7rem !important;
-        }
-        .stButton button {
-            width: 100%;
-        }
-    }
-    /* Cartões e containers estilizados */
-    .info-box {
-        background-color: #f0f2f6;
-        border-radius: 10px;
-        padding: 1rem;
-        margin: 1rem 0;
-        border-left: 5px solid #2c3e50;
-    }
-    .interpret-box {
-        background-color: #e8f4f8;
-        border-radius: 10px;
-        padding: 1rem;
-        margin: 1rem 0;
-        border-left: 5px solid #3498db;
-    }
-    .stat-box {
-        background-color: #eafaf1;
-        border-radius: 10px;
-        padding: 1rem;
-        margin: 1rem 0;
-        border-left: 5px solid #27ae60;
-    }
-    hr {
-        margin: 1.5rem 0;
-    }
-</style>
-""", unsafe_allow_html=True)
-
 # Suprimir warnings
 warnings.filterwarnings("ignore", category=FutureWarning)
 pd.set_option('display.max_columns', None)
@@ -94,7 +41,6 @@ OX_BASELINE = 0.1
 PHI_BASELINE = 0.85                  # Fator φ para clima úmido (UNFCCC 2024)
 
 # Fatores de emissão padrão da metodologia UNFCCC (AMS‑III.F / TOOL13)
-# Estes fatores são aplicáveis a qualquer tecnologia de compostagem (leiras, termofílica, vermicompostagem)
 EF_CH4_STD = 0.002      # t CH₄ / t resíduo úmido
 EF_N2O_STD = 0.0005     # t N₂O / t resíduo úmido
 
@@ -389,17 +335,18 @@ st.caption("Comparação: Vermicompostagem (Yang et al. 2017) vs Compostagem Ter
 
 with st.container():
     st.markdown("""
-    <div class="info-box">
-    <strong>📘 Nota metodológica:</strong><br>
-    A metodologia <strong>AMS‑III.F</strong> e sua ferramenta <strong>TOOL13</strong> (UNFCCC, 2016) fornecem fatores de emissão padrão para qualquer projeto de compostagem:<br>
-    <strong>CH₄ = 0,002 t/t resíduo úmido</strong> e <strong>N₂O = 0,0005 t/t resíduo úmido</strong>.<br>
-    Estes fatores são conservadores e podem ser aplicados a <strong>todas as tecnologias</strong> (leiras, termofílica, vermicompostagem).<br><br>
-    Neste simulador, para fins de comparação científica, utilizamos:<br>
-    - <strong>Fatores padrão UNFCCC</strong> → aplicados a um cenário de compostagem em leiras aeradas.<br>
-    - <strong>Fatores experimentais de Yang et al. (2017)</strong> → para vermicompostagem e compostagem termofílica.<br><br>
+    **📘 Nota metodológica:**  
+    A metodologia **AMS‑III.F** e sua ferramenta **TOOL13** (UNFCCC, 2016) fornecem fatores de emissão padrão para qualquer projeto de compostagem:  
+    **CH₄ = 0,002 t/t resíduo úmido** e **N₂O = 0,0005 t/t resíduo úmido**.  
+    Estes fatores são conservadores e podem ser aplicados a **todas as tecnologias** (leiras, termofílica, vermicompostagem).  
+
+    Neste simulador, para fins de comparação científica, utilizamos:  
+    - **Fatores padrão UNFCCC** → aplicados a um cenário de compostagem em leiras aeradas.  
+    - **Fatores experimentais de Yang et al. (2017)** → para vermicompostagem e compostagem termofílica.  
+
     Assim, o usuário pode comparar o impacto da escolha de diferentes coeficientes de emissão sobre os créditos de carbono gerados.
-    </div>
-    """, unsafe_allow_html=True)
+    """)
+    st.divider()
 
 exibir_cotacao_carbono()
 
@@ -509,16 +456,13 @@ if st.session_state.get('run_simulation', False):
         df_comp = pd.DataFrame(comp)
         st.dataframe(df_comp.style.format({c: lambda x: formatar_br(x) for c in df_comp.columns if c != "Cenário"}))
         
-        with st.container():
-            st.markdown("""
-            <div class="interpret-box">
-            <strong>🔍 Interpretação dos cenários de GWP:</strong><br>
-            - <strong>Otimista (GWP-20)</strong>: destaca o impacto de curto prazo do metano (79,7x CO₂eq) – resulta nas maiores emissões evitadas.<br>
-            - <strong>Realista (GWP-100)</strong>: padrão mais comum em inventários nacionais (27,0x CO₂eq).<br>
-            - <strong>Pessimista (GWP-500)</strong>: reduz drasticamente o peso do metano (7,2x CO₂eq), aproximando-se de uma visão de longo prazo.<br>
-            Independentemente do cenário, a <strong>vermocompostagem apresenta as maiores reduções</strong>, seguida pela termofílica e depois pelos fatores padrão UNFCCC.
-            </div>
-            """, unsafe_allow_html=True)
+        st.info("""
+        **🔍 Interpretação dos cenários de GWP:**  
+        - **Otimista (GWP-20)**: destaca o impacto de curto prazo do metano (79,7x CO₂eq) – resulta nas maiores emissões evitadas.  
+        - **Realista (GWP-100)**: padrão mais comum em inventários nacionais (27,0x CO₂eq).  
+        - **Pessimista (GWP-500)**: reduz drasticamente o peso do metano (7,2x CO₂eq), aproximando-se de uma visão de longo prazo.  
+        - Independentemente do cenário, a **vermocompostagem apresenta as maiores reduções**, seguida pela termofílica e depois pelos fatores padrão UNFCCC.
+        """)
 
         # ===== VALOR FINANCEIRO =====
         st.subheader("💰 Valor Financeiro (Cenário Otimista)")
@@ -543,13 +487,11 @@ if st.session_state.get('run_simulation', False):
             st.metric("Euro", f"{moeda} {formatar_br(v_std*preco)}")
             st.metric("R$", f"R$ {formatar_br(v_std*preco*cambio)}")
         
-        st.markdown(f"""
-        <div class="stat-box">
-        <strong>💡 Análise financeira:</strong><br>
-        - A <strong>vermocompostagem</strong> gera aproximadamente <strong>{formatar_br(v_vermi/v_termo):.1f}x</strong> mais receita que a termofílica e <strong>{formatar_br(v_vermi/v_std):.1f}x</strong> mais que os fatores padrão.<br>
-        - Para cada tonelada de resíduo tratado, o retorno financeiro apenas com créditos de carbono (sem custos operacionais) é de <strong>{moeda} {formatar_br((v_vermi*preco)/(residuos_kg_dia*365*anos_simulacao/1000))} por t</strong>.
-        </div>
-        """, unsafe_allow_html=True)
+        st.success(f"""
+        **💡 Análise financeira:**  
+        - A **vermocompostagem** gera aproximadamente **{formatar_br(v_vermi/v_termo):.1f}x** mais receita que a termofílica e **{formatar_br(v_vermi/v_std):.1f}x** mais que os fatores padrão.  
+        - Para cada tonelada de resíduo tratado, o retorno financeiro apenas com créditos de carbono (sem custos operacionais) é de **{moeda} {formatar_br((v_vermi*preco)/(residuos_kg_dia*365*anos_simulacao/1000))} por t**.
+        """)
 
         # ===== COMPARAÇÃO ANUAL (BARRAS) =====
         st.subheader("📊 Comparação Anual das Emissões Evitadas (GWP-20)")
@@ -572,12 +514,10 @@ if st.session_state.get('run_simulation', False):
         st.pyplot(fig)
         plt.close(fig)
         
-        st.markdown("""
-        <div class="interpret-box">
-        <strong>📅 Evolução anual:</strong><br>
+        st.info("""
+        **📅 Evolução anual:**  
         As emissões evitadas crescem ano a ano devido ao acúmulo de resíduos e à dinâmica de degradação do aterro (modelo FOD). Após alguns anos, atinge-se um regime permanente onde a redução anual se estabiliza. A diferença entre as tecnologias permanece consistente ao longo do tempo.
-        </div>
-        """, unsafe_allow_html=True)
+        """)
 
         # ===== EMISSÕES ACUMULADAS =====
         st.subheader("📉 Emissões Acumuladas (Baseline vs Tecnologias)")
@@ -595,15 +535,13 @@ if st.session_state.get('run_simulation', False):
         st.pyplot(fig2)
         plt.close(fig2)
         
-        st.markdown(f"""
-        <div class="stat-box">
-        <strong>📈 Impacto acumulado:</strong><br>
-        - Em {anos_simulacao} anos, a <strong>vermocompostagem</strong> evitaria <strong>{formatar_br(base_acum[-1] - vermi_acum[-1])} tCO₂eq</strong> em relação ao aterro.<br>
-        - A termofílica evitaria <strong>{formatar_br(base_acum[-1] - termo_acum[-1])} tCO₂eq</strong>.<br>
-        - Os fatores padrão UNFCCC resultariam em <strong>{formatar_br(base_acum[-1] - std_acum[-1])} tCO₂eq</strong> evitadas.<br>
+        st.success(f"""
+        **📈 Impacto acumulado:**  
+        - Em {anos_simulacao} anos, a **vermocompostagem** evitaria **{formatar_br(base_acum[-1] - vermi_acum[-1])} tCO₂eq** em relação ao aterro.  
+        - A termofílica evitaria **{formatar_br(base_acum[-1] - termo_acum[-1])} tCO₂eq**.  
+        - Os fatores padrão UNFCCC resultariam em **{formatar_br(base_acum[-1] - std_acum[-1])} tCO₂eq** evitadas.  
         - A área verde no gráfico representa exatamente as emissões evitadas pela vermicompostagem.
-        </div>
-        """, unsafe_allow_html=True)
+        """)
 
         # ===== ANÁLISE DE SENSIBILIDADE SOBOL =====
         st.subheader("🎯 Análise de Sensibilidade Sobol (GWP-20)")
@@ -619,18 +557,17 @@ if st.session_state.get('run_simulation', False):
         num_cols = [col for col in df_sens.columns if col != 'Parâmetro']
         st.dataframe(df_sens.style.format({col: '{:.4f}' for col in num_cols}))
         
-        st.markdown("""
-        <div class="interpret-box">
-        <strong>🔬 Significado dos índices de Sobol:</strong><br>
-        - <strong>S1 (primeira ordem)</strong>: impacto direto de cada parâmetro, sem interações.<br>
-        - <strong>ST (total)</strong>: inclui interações com outros parâmetros.<br><br>
-        <strong>Principais conclusões:</strong><br>
-        - <strong>DOC</strong> (carbono orgânico degradável) é o parâmetro mais influente em todas as tecnologias (ST > 0,6).<br>
-        - <strong>Temperatura</strong> tem impacto moderado, especialmente na vermicompostagem (ST ~ 0,3-0,4).<br>
-        - <strong>Taxa de decaimento (k)</strong> é pouco influente para horizontes longos (20 anos) porque o aterro já atingiu o equilíbrio.<br>
+        st.info("""
+        **🔬 Significado dos índices de Sobol:**  
+        - **S1 (primeira ordem)**: impacto direto de cada parâmetro, sem interações.  
+        - **ST (total)**: inclui interações com outros parâmetros.  
+
+        **Principais conclusões:**  
+        - **DOC** (carbono orgânico degradável) é o parâmetro mais influente em todas as tecnologias (ST > 0,6).  
+        - **Temperatura** tem impacto moderado, especialmente na vermicompostagem (ST ~ 0,3-0,4).  
+        - **Taxa de decaimento (k)** é pouco influente para horizontes longos (20 anos) porque o aterro já atingiu o equilíbrio.  
         - Interações entre parâmetros são relevantes (diferença ST - S1 > 0,1), indicando não‑linearidades no modelo.
-        </div>
-        """, unsafe_allow_html=True)
+        """)
 
         # ===== MONTE CARLO E TESTES ESTATÍSTICOS =====
         st.subheader("🎲 Monte Carlo e Testes Estatísticos (GWP-20)")
@@ -654,14 +591,12 @@ if st.session_state.get('run_simulation', False):
         ])
         st.dataframe(stats_df.style.format({c: lambda x: formatar_br(x) for c in stats_df.columns if c != 'Tecnologia'}))
 
-        st.markdown(f"""
-        <div class="stat-box">
-        <strong>📊 Incerteza dos resultados:</strong><br>
-        - Intervalo de confiança de 95% para a vermicompostagem: <strong>[{formatar_br(np.percentile(arr_v,2.5))}, {formatar_br(np.percentile(arr_v,97.5))}] tCO₂eq</strong>.<br>
-        - Coeficiente de variação (DP/média): <strong>{(np.std(arr_v)/np.mean(arr_v)*100):.1f}%</strong> (incerteza moderada).<br>
+        st.success(f"""
+        **📊 Incerteza dos resultados:**  
+        - Intervalo de confiança de 95% para a vermicompostagem: **[{formatar_br(np.percentile(arr_v,2.5))}, {formatar_br(np.percentile(arr_v,97.5))}] tCO₂eq**.  
+        - Coeficiente de variação (DP/média): **{(np.std(arr_v)/np.mean(arr_v)*100):.1f}%** (incerteza moderada).  
         - A distribuição é aproximadamente normal (verifique o teste de Shapiro‑Wilk abaixo).
-        </div>
-        """, unsafe_allow_html=True)
+        """)
 
         # Testes pareados
         st.write("**Testes de diferença significativa (p-valores):**")
@@ -680,14 +615,12 @@ if st.session_state.get('run_simulation', False):
         col3.metric("Termo vs Std", f"t-test p = {t_ts:.5f}")
         col3.metric("Wilcoxon p", f"{w_ts:.5f}")
         
-        st.markdown("""
-        <div class="interpret-box">
-        <strong>✅ Interpretação estatística:</strong><br>
-        - Se <strong>p < 0,05</strong>, a diferença entre as tecnologias é estatisticamente significativa.<br>
-        - Neste caso, todas as comparações apresentam <strong>p < 0,001</strong>, indicando que as três tecnologias produzem resultados <strong>muito diferentes entre si</strong>.<br>
+        st.info("""
+        **✅ Interpretação estatística:**  
+        - Se **p < 0,05**, a diferença entre as tecnologias é estatisticamente significativa.  
+        - Neste caso, todas as comparações apresentam **p < 0,001**, indicando que as três tecnologias produzem resultados **muito diferentes entre si**.  
         - O teste de Wilcoxon (não paramétrico) confirma a robustez da conclusão, mesmo sem assumir normalidade.
-        </div>
-        """, unsafe_allow_html=True)
+        """)
 
         # ===== TABELA ANUAL DETALHADA =====
         st.subheader("📋 Resultados Anuais Detalhados")
@@ -699,34 +632,32 @@ if st.session_state.get('run_simulation', False):
         st.dataframe(df_anual_fmt)
         
         st.markdown("""
-        <div class="info-box">
-        <strong>📌 Nota final:</strong><br>
-        - Os valores anuais permitem ver a evolução ano a ano.<br>
-        - As emissões evitadas crescem rapidamente nos primeiros anos e depois estabilizam.<br>
+        **📌 Nota final:**  
+        - Os valores anuais permitem ver a evolução ano a ano.  
+        - As emissões evitadas crescem rapidamente nos primeiros anos e depois estabilizam.  
         - A escolha da tecnologia de compostagem impacta diretamente o potencial de geração de créditos de carbono.
-        </div>
-        """, unsafe_allow_html=True)
+        """)
 
     st.session_state.run_simulation = False
 else:
     st.info("💡 Ajuste os parâmetros na barra lateral e clique em **Executar Simulação** para ver os resultados.")
 
 st.markdown("---")
-st.markdown("""
-<details>
-<summary><strong>📚 Referências Metodológicas Detalhadas</strong></summary>
-<br>
-<strong>1. Baseline – Aterro Sanitário (Guatapará, Ribeirão Preto)</strong><br>
-- <strong>Modelo de metano (CH₄) – IPCC 2006</strong>: Método FOD, parâmetros MCF=1,0; F=0,5; OX=0,1; k=0,06 ou 0,40 ano⁻¹; DOCf = 0,0147×T+0,28.<br>
-- <strong>Emissões de N₂O – Wang et al. (2017)</strong>: E_open = 1,91 mg m⁻² h⁻¹; E_closed = 2,15 mg m⁻² h⁻¹.<br>
-- <strong>Pré‑descarte – Feng et al. (2020)</strong>: CH₄ = 2,78 μgC kg⁻¹ h⁻¹; N₂O total = 20,26 mg N kg⁻¹.<br>
-- <strong>Fator φ – UNFCCC A6.4‑AMT‑003 (2024)</strong>: para clima úmido, φ = 0,85.<br>
-- <strong>Captura de metano</strong>: 60% (dado real do Aterro Guatapará).<br><br>
-<strong>2. Tecnologias de compostagem</strong><br>
-- <strong>Fatores padrão UNFCCC (AMS‑III.F / TOOL13)</strong>: CH₄ = 0,002 t/t úmido; N₂O = 0,0005 t/t úmido.<br>
-- <strong>Fatores Yang et al. (2017)</strong>: Vermicompostagem (CH₄ = 0,0013 t/tC; N₂O = 0,0092 t/tN); Termofílica (CH₄ = 0,0060 t/tC; N₂O = 0,0196 t/tN).<br><br>
-<strong>3. Potencial de Aquecimento Global (GWP)</strong><br>
-- Forster et al. (2021) IPCC AR6: GWP-20 (CH₄=79,7; N₂O=273); GWP-100 (27,0;273); GWP-500 (7,2;130).<br><br>
-<strong>⚠️ Reprodutibilidade:</strong> Seed fixa (50) e paralelização com joblib.
-</details>
-""", unsafe_allow_html=True)
+with st.expander("📚 Referências Metodológicas Detalhadas"):
+    st.markdown("""
+    **1. Baseline – Aterro Sanitário (Guatapará, Ribeirão Preto)**  
+    - **Modelo de metano (CH₄) – IPCC 2006**: Método FOD, parâmetros MCF=1,0; F=0,5; OX=0,1; k=0,06 ou 0,40 ano⁻¹; DOCf = 0,0147×T+0,28.  
+    - **Emissões de N₂O – Wang et al. (2017)**: E_open = 1,91 mg m⁻² h⁻¹; E_closed = 2,15 mg m⁻² h⁻¹.  
+    - **Pré‑descarte – Feng et al. (2020)**: CH₄ = 2,78 μgC kg⁻¹ h⁻¹; N₂O total = 20,26 mg N kg⁻¹.  
+    - **Fator φ – UNFCCC A6.4‑AMT‑003 (2024)**: para clima úmido, φ = 0,85.  
+    - **Captura de metano**: 60% (dado real do Aterro Guatapará).  
+
+    **2. Tecnologias de compostagem**  
+    - **Fatores padrão UNFCCC (AMS‑III.F / TOOL13)**: CH₄ = 0,002 t/t úmido; N₂O = 0,0005 t/t úmido.  
+    - **Fatores Yang et al. (2017)**: Vermicompostagem (CH₄ = 0,0013 t/tC; N₂O = 0,0092 t/tN); Termofílica (CH₄ = 0,0060 t/tC; N₂O = 0,0196 t/tN).  
+
+    **3. Potencial de Aquecimento Global (GWP)**  
+    - Forster et al. (2021) IPCC AR6: GWP-20 (CH₄=79,7; N₂O=273); GWP-100 (27,0;273); GWP-500 (7,2;130).  
+
+    **⚠️ Reprodutibilidade:** Seed fixa (50) e paralelização com joblib.
+    """)

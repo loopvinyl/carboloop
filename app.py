@@ -338,8 +338,7 @@ st.caption("Comparação: Vermicompostagem (Yang et al. 2017) vs Compostagem Ter
 with st.container():
     st.markdown("""
     **📘 Nota metodológica:**  
-    A metodologia **AMS‑III.F** e sua ferramenta **TOOL13** (UNFCCC, 2016) fornecem fatores de emissão padrão para qualquer projeto de compostagem:  
-    **CH₄ = 0,002 t/t resíduo úmido** e **N₂O = 0,0005 t/t resíduo úmido**. Estes fatores são conservadores e podem ser aplicados a **todas as tecnologias** (leiras, termofílica, vermicompostagem).  
+    A metodologia **AMS‑III.F** e sua ferramenta **TOOL13** (UNFCCC, 2016) fornecem fatores de emissão padrão para qualquer projeto de compostagem:**CH₄ = 0,002 t/t resíduo úmido** e **N₂O = 0,0005 t/t resíduo úmido**. Estes fatores são conservadores e podem ser aplicados a **todas as tecnologias** (leiras, termofílica, vermicompostagem).  
 
     Neste simulador, para fins de comparação científica, utilizamos:  
     - **Fatores padrão UNFCCC** → aplicados a um cenário de compostagem em leiras aeradas.  

@@ -15,6 +15,33 @@ from SALib.sample.sobol import sample
 from SALib.analyze.sobol import analyze
 import yfinance as yf
 
+# CSS customizado para justificar textos e padronizar tamanhos
+st.markdown("""
+<style>
+    /* Justificar todos os textos corridos */
+    p, .stMarkdown, .stInfo, .stSuccess, .stWarning, .stException, .stText, .stCaption, .stMetric, .stDataFrame {
+        text-align: justify !important;
+    }
+    /* Ajuste fino para métricas e células de tabela */
+    .stMetric label, .stMetric .metric-value, .stMetric .metric-delta {
+        text-align: center !important;
+    }
+    /* Tamanho de fonte equilibrado para elementos de teste */
+    .test-stats {
+        font-size: 0.9rem;
+    }
+    /* Responsividade para telas pequenas */
+    @media (max-width: 768px) {
+        .stMetric label, .stMetric .metric-value {
+            font-size: 0.8rem;
+        }
+        .test-stats {
+            font-size: 0.75rem;
+        }
+    }
+</style>
+""", unsafe_allow_html=True)
+
 # Semente fixa para reprodutibilidade
 np.random.seed(50)
 
@@ -336,7 +363,6 @@ st.title("🌍 Simulador de Emissões de GEE e Créditos de Carbono")
 st.caption("Comparação: Vermicompostagem (Yang et al. 2017) vs Compostagem Termofílica (Yang et al. 2017) vs Fatores Padrão UNFCCC (AMS‑III.F / TOOL13). Baseline = Aterro em Guatapará, destino da maior parte dos RSU de Ribeirão Preto")
 
 with st.container():
-    # NOTA METODOLÓGICA REFINADA EM UM ÚNICO PARÁGRAFO CONTÍNUO
     st.markdown("""
     **📘 Nota metodológica:** A metodologia **AMS‑III.F** e sua ferramenta **TOOL13** (UNFCCC, 2016) fornecem fatores de emissão padrão para qualquer projeto de compostagem: **CH₄ = 0,002 t/t resíduo úmido** e **N₂O = 0,0005 t/t resíduo úmido**. Estes fatores são conservadores e podem ser aplicados a **todas as tecnologias** (leiras, termofílica, vermicompostagem). Neste simulador, para fins de comparação científica, utilizamos: **Fatores padrão UNFCCC** → aplicados a um cenário de compostagem em leiras aeradas; **Fatores experimentais de Yang et al. (2017)** → para vermicompostagem e compostagem termofílica. Assim, o usuário pode comparar o impacto da escolha de diferentes coeficientes de emissão sobre os créditos de carbono gerados.
     """)
@@ -618,6 +644,7 @@ if st.session_state.get('run_simulation', False):
         - A distribuição é aproximadamente normal (verifique o teste de Shapiro‑Wilk abaixo).
         """)
 
+        # Testes de diferença significativa - Apresentação compacta e equilibrada
         st.write("**Testes de diferença significativa (p-valores):**")
         t_vt = stats.ttest_rel(arr_v, arr_t)[1]
         t_vs = stats.ttest_rel(arr_v, arr_s)[1]
@@ -626,13 +653,14 @@ if st.session_state.get('run_simulation', False):
         w_vs = stats.wilcoxon(arr_v, arr_s)[1]
         w_ts = stats.wilcoxon(arr_t, arr_s)[1]
         
+        # Usando colunas para distribuir igualmente
         col1, col2, col3 = st.columns(3)
-        col1.metric("Vermi vs Termo", f"t-test p = {t_vt:.5f}")
-        col1.metric("Wilcoxon p", f"{w_vt:.5f}")
-        col2.metric("Vermi vs Std", f"t-test p = {t_vs:.5f}")
-        col2.metric("Wilcoxon p", f"{w_vs:.5f}")
-        col3.metric("Termo vs Std", f"t-test p = {t_ts:.5f}")
-        col3.metric("Wilcoxon p", f"{w_ts:.5f}")
+        with col1:
+            st.markdown(f"<div class='test-stats'>**Vermi vs Termo**<br>t-test p = {t_vt:.5f}<br>Wilcoxon p = {w_vt:.5f}</div>", unsafe_allow_html=True)
+        with col2:
+            st.markdown(f"<div class='test-stats'>**Vermi vs Std**<br>t-test p = {t_vs:.5f}<br>Wilcoxon p = {w_vs:.5f}</div>", unsafe_allow_html=True)
+        with col3:
+            st.markdown(f"<div class='test-stats'>**Termo vs Std**<br>t-test p = {t_ts:.5f}<br>Wilcoxon p = {w_ts:.5f}</div>", unsafe_allow_html=True)
         
         st.info("""
         **✅ Interpretação estatística:**  

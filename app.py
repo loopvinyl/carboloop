@@ -20,7 +20,7 @@ np.random.seed(50)
 
 # Configuração da página Streamlit
 st.set_page_config(
-    page_title="Simulador de Emissões de GEE e Créditos de Carbono: Yang et al. 2017 vs TOOL13/AMS‑III.F com Baseline Aterro (Ribeirão Preto)",
+    page_title="Simulador de Emissões de GEE e Créditos de Carbono",
     layout="wide"
 )
 
@@ -459,7 +459,7 @@ inicializar_session_state()
 # =============================================================================
 # INTERFACE PRINCIPAL E PARÂMETROS DE ENTRADA
 # =============================================================================
-st.title("Comparação de Tecnologias de Compostagem para Créditos de Carbono")
+st.title("Simulador de Emissões de GEE e Créditos de Carbono: Yang et al. 2017 vs TOOL13/AMS‑III.F com Baseline Aterro (Ribeirão Preto)")
 st.markdown("""
 **Tecnologias avaliadas:**
 - **Vermicompostagem** – fatores de emissão de **Yang et al. (2017)**

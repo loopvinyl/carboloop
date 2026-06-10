@@ -394,7 +394,7 @@ with st.sidebar:
         index=0,
         help="""
         - **Otimista (GWP-20)**: Fatores altos (CH₄=79,7; N₂O=273). Gera as maiores emissões evitadas. Recomendado para projetos que buscam maximizar créditos em horizonte de curto prazo (20 anos).
-        - **Realista (GWP-100)**: Padrão mais aceito internacionalmente (CH₄=27,0; N₂O=273). Balança precisão e aceitação regulatória.
+        - **Realista (GWP-100)**: Padrão mais aceito internacionalmente (CH₄=27,0; N₂O=273). Equilibra precisão e aceitação regulatória.
         - **Pessimista (GWP-500)**: Fatores baixos (CH₄=7,2; N₂O=130). Resulta nas menores emissões evitadas. Visão de longo prazo (500 anos) ou para metodologias conservadoras.
         """
     )
@@ -640,7 +640,7 @@ if st.session_state.get('run_simulation', False):
         **📊 Incerteza dos resultados:**  
         - Intervalo de confiança de 95% para a vermicompostagem: **[{formatar_br(np.percentile(arr_v,2.5))}, {formatar_br(np.percentile(arr_v,97.5))}] tCO₂eq**.  
         - Coeficiente de variação (DP/média): **{cv:.1f}%** (incerteza moderada).  
-        - A distribuição é aproximadamente normal (verifique o teste de Shapiro‑Wilk abaixo).
+        - A distribuição é aproximadamente normal (verifique o teste de Shapiro-Wilk abaixo).
         """)
 
         # Testes de diferença significativa - Apresentação compacta e equilibrada

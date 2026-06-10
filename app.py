@@ -314,11 +314,11 @@ with st.sidebar:
         st.session_state.run_simulation = True
 
 # =============================================================================
-# FUNÇÕES PARA SOBOL E MONTE CARLO (serão chamadas após os resultados rápidos)
+# FUNÇÕES PARA SOBOL E MONTE CARLO (com paralelismo no Monte Carlo)
 # =============================================================================
 def sobol_thermo(params, gwp_ch4, gwp_n2o):
     k, temp, doc = params
-    np.random.seed(50)
+    np.random.seed(50)  # seed fixo para reprodutibilidade dentro de cada worker
     calc = GHGEmissionCalculator()
     calc.GWP_CH4_20 = gwp_ch4
     calc.GWP_N2O_20 = gwp_n2o
@@ -341,6 +341,16 @@ def gerar_parametros_mc(n):
     d = np.random.triangular(0.12, 0.15, 0.18, n)
     return u, t, d
 
+# Função auxiliar para uma única execução do Monte Carlo (usada no paralelismo)
+def run_montecarlo_single(i, gwp_ch4, gwp_n2o, u_arr, t_arr, d_arr):
+    np.random.seed(50 + i)  # seed diferente para cada simulação (evita correlação)
+    calc_mc = GHGEmissionCalculator()
+    calc_mc.GWP_CH4_20 = gwp_ch4
+    calc_mc.GWP_N2O_20 = gwp_n2o
+    r_mc = calc_mc.calculate_avoided_emissions(
+        residuos_kg_dia, k_ano, t_arr[i], d_arr[i], u_arr[i], anos_simulacao
+    )
+    return r_mc['thermo_avoided'], r_mc['wind_avoided']
 
 # =============================================================================
 # EXECUÇÃO PRINCIPAL (com ordem de exibição progressiva)
@@ -350,18 +360,15 @@ if st.session_state.get('run_simulation', False):
     # -------------------- 1. RESULTADOS DETERMINÍSTICOS (rápidos) --------------------
     with st.spinner("Calculando resultados determinísticos..."):
         calc = GHGEmissionCalculator()
-        # Usar GWP-20 para os gráficos principais
         calc.GWP_CH4_20, calc.GWP_N2O_20 = (79.7, 273)
         res_det = calc.calculate_avoided_emissions(residuos_kg_dia, k_ano, T, DOC, umidade, anos_simulacao)
         evitado_thermo = res_det['thermo_avoided']
         evitado_windrow = res_det['wind_avoided']
 
-        # Séries diárias para gráficos
         base_series = res_det['base_series']
         thermo_series = res_det['thermo_series']
         wind_series = res_det['wind_series']
 
-        # Cálculo anual para gráfico de barras
         dias_total = len(base_series)
         datas = pd.date_range(start=datetime.now(), periods=dias_total, freq='D')
         df_dia = pd.DataFrame({'Data': datas, 'base': base_series, 'thermo': thermo_series, 'wind': wind_series})
@@ -370,7 +377,6 @@ if st.session_state.get('run_simulation', False):
         df_anual['Evitado_Thermo'] = df_anual['base'] - df_anual['thermo']
         df_anual['Evitado_Wind'] = df_anual['base'] - df_anual['wind']
 
-    # Exibição imediata dos resultados rápidos
     st.header("📈 Resultados da Simulação (GWP-20)")
     st.info(f"""
     **Parâmetros calibrados para Ribeirão Preto:**  
@@ -433,7 +439,7 @@ if st.session_state.get('run_simulation', False):
     st.pyplot(fig2)
     plt.close(fig2)
 
-    # -------------------- 2. TABELA COMPARATIVA DOS TRÊS GWPs (rápido) --------------------
+    # -------------------- 2. TABELA COMPARATIVA DOS TRÊS GWPs --------------------
     st.subheader("📊 Comparação entre Cenários de GWP")
     gwps = {
         "Otimista (GWP-20)": (79.7, 273),
@@ -454,7 +460,7 @@ if st.session_state.get('run_simulation', False):
     df_gwp = pd.DataFrame(comparacao)
     st.dataframe(df_gwp.style.format({c: lambda x: formatar_br(x) for c in df_gwp.columns if c != "Cenário"}))
 
-    # -------------------- 3. ANÁLISE SOBOL (mais pesada) --------------------
+    # -------------------- 3. ANÁLISE SOBOL --------------------
     st.subheader("🎯 Análise de Sensibilidade Global (Sobol) - GWP-20")
     problem = {'num_vars':3, 'names':['k','T','DOC'], 'bounds':[[0.06,0.40],[20,40],[0.10,0.25]]}
     param_values = sample(problem, n_samples, seed=50)
@@ -472,22 +478,17 @@ if st.session_state.get('run_simulation', False):
     })
     st.dataframe(df_sens.style.format({c:'{:.4f}' for c in df_sens.columns if c != 'Parâmetro'}))
 
-    # -------------------- 4. MONTE CARLO E ESTATÍSTICAS (mais pesado) --------------------
+    # -------------------- 4. MONTE CARLO PARALELIZADO (mais rápido) --------------------
     st.subheader("🎲 Análise de Incerteza (Monte Carlo) e Comparação Estatística")
-    with st.spinner("Executando simulações Monte Carlo..."):
+    with st.spinner("Executando simulações Monte Carlo (paralelizado)..."):
         u_mc, t_mc, d_mc = gerar_parametros_mc(n_simulations)
-        arr_thermo_mc = []
-        arr_wind_mc = []
-        for i in range(n_simulations):
-            calc_mc = GHGEmissionCalculator()
-            calc_mc.GWP_CH4_20, calc_mc.GWP_N2O_20 = g20_ch4, g20_n2o
-            r_mc = calc_mc.calculate_avoided_emissions(
-                residuos_kg_dia, k_ano, t_mc[i], d_mc[i], u_mc[i], anos_simulacao
-            )
-            arr_thermo_mc.append(r_mc['thermo_avoided'])
-            arr_wind_mc.append(r_mc['wind_avoided'])
-        arr_thermo_mc = np.array(arr_thermo_mc)
-        arr_wind_mc = np.array(arr_wind_mc)
+        # Executa as simulações em paralelo (usa todos os núcleos)
+        resultados = Parallel(n_jobs=-1)(
+            delayed(run_montecarlo_single)(i, g20_ch4, g20_n2o, u_mc, t_mc, d_mc)
+            for i in range(n_simulations)
+        )
+        arr_thermo_mc = np.array([r[0] for r in resultados])
+        arr_wind_mc = np.array([r[1] for r in resultados])
         diff = arr_thermo_mc - arr_wind_mc
 
         shapiro_stat, shapiro_p = stats.shapiro(diff)
@@ -508,7 +509,7 @@ if st.session_state.get('run_simulation', False):
     ])
     st.dataframe(stats_df.style.format({c: lambda x: formatar_br(x) for c in stats_df.columns if c != "Tecnologia"}))
 
-    # Distribuição das emissões evitadas (gráfico KDE)
+    # Distribuição das emissões evitadas
     fig3, ax3 = plt.subplots(figsize=(10,6))
     sns.kdeplot(arr_thermo_mc, label="Termofílica", linewidth=2, ax=ax3)
     sns.kdeplot(arr_wind_mc, label="Leiras (TOOL13)", linewidth=2, ax=ax3)
@@ -521,7 +522,7 @@ if st.session_state.get('run_simulation', False):
     st.pyplot(fig3)
     plt.close(fig3)
 
-    # Tabela anual detalhada (já calculada)
+    # Tabela anual detalhada
     st.subheader("📋 Resultados Anuais (Cenário Otimista)")
     df_anual_fmt = df_anual[['Year', 'base', 'thermo', 'wind', 'Evitado_Thermo', 'Evitado_Wind']].copy()
     df_anual_fmt.columns = ['Year', 'Baseline (tCO₂eq)', 'Termofílica (tCO₂eq)', 'Leiras (tCO₂eq)', 'Redução Termofílica', 'Redução Leiras']
